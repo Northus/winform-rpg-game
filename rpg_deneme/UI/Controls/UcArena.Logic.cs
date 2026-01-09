@@ -118,8 +118,12 @@ public partial class UcArena
         _hero = hero;
         LoadHotbarFromSession();
         _isTownMode = true;
+
+        // Fix: Clear ALL lists to prevent lingering lag/stutters
         _projectiles.Clear();
         _enemies.Clear();
+        _effects.Clear();
+
         _w = (_a = (_s = (_d = false)));
         InitTownEntities();
         UpdateTownLayout();
@@ -1487,6 +1491,9 @@ public partial class UcArena
         float playerCenterX = _player.Center.X;
         float playerCenterY = _player.Center.Y;
 
+        // 1. Build Spatial Grid (O(N))
+        _enemyGrid.Build(_enemies, 80f);
+
         for (int i = 0; i < enemyCount; i++)
         {
             BattleEntity enemy = _enemies[i];
@@ -1495,6 +1502,8 @@ public partial class UcArena
 
             float enemyCenterX = enemy.X + enemy.Width / 2f;
             float enemyCenterY = enemy.Y + enemy.Height / 2f;
+
+            // Vector to Player
             float dx = playerCenterX - enemyCenterX;
             float dy = playerCenterY - enemyCenterY;
             float distSqToPlayer = dx * dx + dy * dy;
@@ -1504,19 +1513,21 @@ public partial class UcArena
             float dirX = dx / distToPlayer;
             float dirY = dy / distToPlayer;
 
-            // Simple Separation Logic
+            // --- Separation Logic using Grid ---
             float sepX = 0f;
             float sepY = 0f;
             int neighbors = 0;
-            float separationRadius = 45f;
+
+            // Allow slight overlap: Separation radius < Enemy size
+            float separationRadius = 28f;
             float separationRadiusSq = separationRadius * separationRadius;
 
-            // Simplified loop (no spatial grid)
-            for (int j = 0; j < enemyCount; j++)
+            _enemyGrid.ForEachNeighborIndex(enemyCenterX, enemyCenterY, (idx) =>
             {
-                if (i == j) continue;
-                BattleEntity other = _enemies[j];
-                if (other.CurrentHP <= 0) continue;
+                if (idx == i) return;
+
+                BattleEntity other = _enemies[idx];
+                if (other.CurrentHP <= 0) return;
 
                 float odx = enemyCenterX - (other.X + other.Width / 2f);
                 float ody = enemyCenterY - (other.Y + other.Height / 2f);
@@ -1530,65 +1541,77 @@ public partial class UcArena
                     sepY += (ody / dist) * push;
                     neighbors++;
                 }
-            }
+            });
 
             if (neighbors > 0)
             {
+                // Normalize but keep force relative to congestion
                 sepX /= neighbors;
                 sepY /= neighbors;
             }
 
+            // --- Steering Synthesis ---
             float desiredRange = (enemy.AttackRange > 0) ? enemy.AttackRange : (enemy.IsRanged ? 250f : 45f);
+
+            // Randomize desired range slightly
+            float rangeVariation = (i % 5) * 6.0f;
+            desiredRange += rangeVariation;
+
             float moveX = 0f;
             float moveY = 0f;
 
-            // State Machine / Movement Logic
+            // Weights
+            float separationWeight = 3.5f;
+            float approachWeight = 1.0f;
+
             if (enemy.IsRanged)
             {
                 if (distToPlayer > desiredRange)
                 {
-                    moveX = dirX + sepX;
-                    moveY = dirY + sepY;
+                    moveX = dirX * approachWeight + sepX * separationWeight;
+                    moveY = dirY * approachWeight + sepY * separationWeight;
                 }
                 else if (distToPlayer < desiredRange * 0.6f)
                 {
-                    moveX = -dirX + sepX;
-                    moveY = -dirY + sepY;
+                    moveX = -dirX * 1.5f + sepX * separationWeight;
+                    moveY = -dirY * 1.5f + sepY * separationWeight;
                 }
                 else
                 {
-                    moveX = sepX;
-                    moveY = sepY;
+                    moveX = sepX * separationWeight;
+                    moveY = sepY * separationWeight;
                 }
             }
             else
             {
                 if (distToPlayer > desiredRange)
                 {
-                    moveX = dirX + sepX * 1.5f;
-                    moveY = dirY + sepY * 1.5f;
+                    moveX = dirX * approachWeight + sepX * separationWeight;
+                    moveY = dirY * approachWeight + sepY * separationWeight;
                 }
                 else
                 {
-                    moveX = sepX * 0.8f;
-                    moveY = sepY * 0.8f;
+                    // At attack range: just crowd/surround
+                    moveX = sepX * separationWeight;
+                    moveY = sepY * separationWeight;
                 }
             }
 
             float mag = moveX * moveX + moveY * moveY;
             if (mag > 0.001f)
             {
-                mag = MathF.Sqrt(mag);
-                moveX /= mag;
-                moveY /= mag;
+                // Normalize speed check
+                float norm = MathF.Sqrt(mag);
+                moveX /= norm;
+                moveY /= norm;
             }
             else
             {
                 moveX = 0f; moveY = 0f;
             }
 
-            enemy.VX = Lerp(enemy.VX, moveX * enemy.Speed, 0.15f);
-            enemy.VY = Lerp(enemy.VY, moveY * enemy.Speed, 0.15f);
+            enemy.VX = Lerp(enemy.VX, moveX * enemy.Speed, 0.2f);
+            enemy.VY = Lerp(enemy.VY, moveY * enemy.Speed, 0.2f);
 
             enemy.X += enemy.VX;
             enemy.Y += enemy.VY;
@@ -1616,7 +1639,8 @@ public partial class UcArena
             }
             else
             {
-                if (distToPlayer <= 60f && enemy.AttackCooldown <= 0)
+                // Use a slightly larger range for attack check to be forgiving
+                if (distToPlayer <= 65f && enemy.AttackCooldown <= 0)
                 {
                     enemy.VisualAttackTimer = 10f;
                     enemy.AttackCooldown = 50;
