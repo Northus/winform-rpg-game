@@ -1,0 +1,231 @@
+﻿using Microsoft.Data.SqlClient;
+using rpg_deneme.Models;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using static rpg_deneme.Core.Enums;
+
+namespace rpg_deneme.Data
+{
+    public class CharacterRepository
+    {
+        /// <summary>
+        /// Belirli bir kullanıcıya ait tüm karakterleri listeler.
+        /// </summary>
+        public List<CharacterModel> GetCharacters()
+        {
+            var list = new List<CharacterModel>();
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                conn.Open();
+                SqlCommand cmd = new SqlCommand("SELECT * FROM Characters", conn);
+
+                using (var dr = cmd.ExecuteReader())
+                {
+                    while (dr.Read())
+                    {
+                        list.Add(new CharacterModel
+                        {
+                            CharacterID = (int)dr["CharacterID"],
+                            Name = dr["Name"].ToString(),
+                            Class = (byte)dr["Class"],
+                            Level = (int)dr["Level"],
+                            Experience = dr["Experience"] != DBNull.Value ? (long)dr["Experience"] : 0,
+                            STR = (int)dr["STR"],
+                            DEX = (int)dr["DEX"],
+                            INT = (int)dr["INT"],
+                            VIT = (int)dr["VIT"],
+                            StatPoints = (int)dr["StatPoints"],
+                            HP = dr["CurrentHP"] != DBNull.Value ? (int)dr["CurrentHP"] : 100,
+                            Mana = dr["CurrentMana"] != DBNull.Value ? (int)dr["CurrentMana"] : 50,
+                            Gold = dr["Gold"] != DBNull.Value ? Convert.ToInt64(dr["Gold"]) : 0,
+                            MaxSurvivalWave = dr["MaxSurvivalWave"] != DBNull.Value ? (int)dr["MaxSurvivalWave"] : 1,
+                            CurrentZoneID = dr["CurrentZoneID"] != DBNull.Value ? (int)dr["CurrentZoneID"] : 1,
+                            MaxUnlockedZoneID = dr["MaxUnlockedZoneID"] != DBNull.Value ? (int)dr["MaxUnlockedZoneID"] : 1
+                        });
+                    }
+                }
+            }
+            return list;
+        }
+
+        /// <summary>
+        /// Yeni bir karakter oluşturur.
+        /// </summary>
+        public bool CreateCharacter(CharacterModel hero)
+        {
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                conn.Open();
+
+                // Başlangıç Statları (Eğer formdan 0 geldiyse varsayılan ata)
+                int str = hero.STR > 0 ? hero.STR : 5;
+                int dex = hero.DEX > 0 ? hero.DEX : 5;
+                int intel = hero.INT > 0 ? hero.INT : 5;
+                int vit = hero.VIT > 0 ? hero.VIT : 10;
+                int startHP = 100; // StatManager.CalculateMaxHP(vit, 1);
+                int startMana = 50;
+
+                string sql = @"
+                INSERT INTO Characters 
+                (
+                    Name, Class, Level, Experience, 
+                    STR, DEX, INT, VIT, StatPoints, 
+                    CurrentHP, CurrentMana, 
+                    MaxUnlockedZoneID, CurrentZoneID, MaxSurvivalWave
+                ) 
+                VALUES 
+                (
+                    @name, @class, 1, 0, 
+                    @str, @dex, @int, @vit, 0,
+                    @hp, @mana,   
+                    1, 1, 1
+                )";
+
+                SqlCommand cmd = new SqlCommand(sql, conn);
+                // Name null gelirse hata vermemesi için önlem:
+                cmd.Parameters.AddWithValue("@name", (object)hero.Name ?? "Adsız Kahraman");
+
+                cmd.Parameters.AddWithValue("@class", hero.Class);
+                cmd.Parameters.AddWithValue("@str", str);
+                cmd.Parameters.AddWithValue("@dex", dex);
+                cmd.Parameters.AddWithValue("@int", intel);
+                cmd.Parameters.AddWithValue("@vit", vit);
+                cmd.Parameters.AddWithValue("@hp", startHP);
+                cmd.Parameters.AddWithValue("@mana", startMana);
+
+                return cmd.ExecuteNonQuery() > 0;
+            }
+        }
+        /// <summary>
+        /// Verilen ismin veritabanında daha önce alınıp alınmadığını kontrol eder.
+        /// </summary>
+        public bool IsNameAvailable(string name)
+        {
+            using (SqlConnection conn = DatabaseHelper.GetConnection())
+            {
+                string sql = "SELECT COUNT(*) FROM Characters WHERE Name = @name";
+                SqlCommand cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@name", name);
+                conn.Open();
+                int count = (int)cmd.ExecuteScalar();
+                return count == 0; // Eğer 0 ise isim müsaittir (true döner)
+            }
+        }
+
+        /// <summary>
+        /// Karakteri siler (Gelecekte eşyalarını da silmek gerekecek).
+        /// </summary>
+        public bool DeleteCharacter(int characterId)
+        {
+            using (SqlConnection conn = DatabaseHelper.GetConnection())
+            {
+                string sql = "DELETE FROM Characters WHERE CharacterID = @id";
+                SqlCommand cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@id", characterId);
+                conn.Open();
+                return cmd.ExecuteNonQuery() > 0;
+            }
+        }
+        // Karakterin temel statlarını ve kalan puanını günceller
+        public bool UpdateStats(CharacterModel hero)
+        {
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                string sql = @"
+            UPDATE Characters 
+            SET STR = @str, DEX = @dex, INT = @int, VIT = @vit, StatPoints = @pts 
+            WHERE CharacterID = @id";
+
+                SqlCommand cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@str", hero.STR);
+                cmd.Parameters.AddWithValue("@dex", hero.DEX);
+                cmd.Parameters.AddWithValue("@int", hero.INT);
+                cmd.Parameters.AddWithValue("@vit", hero.VIT);
+                cmd.Parameters.AddWithValue("@pts", hero.StatPoints);
+                cmd.Parameters.AddWithValue("@id", hero.CharacterID);
+
+                conn.Open();
+                return cmd.ExecuteNonQuery() > 0;
+            }
+        }
+        // Karakterin ilerleme durumunu (Level, XP, HP, Mana, MaxUnlockedZone ve CurrentZone) kaydeder
+        public bool UpdateProgress(CharacterModel hero)
+        {
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                string sql = @"
+                UPDATE Characters 
+                SET Level = @lvl, 
+                    Experience = @exp, 
+                    StatPoints = @statPts,
+                    CurrentHP = @hp, 
+                    CurrentMana = @mana, 
+                    MaxSurvivalWave = @maxWave,
+                    MaxUnlockedZoneID = @maxZone,
+                    CurrentZoneID = @currentZone
+                WHERE CharacterID = @id";
+
+                SqlCommand cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@lvl", hero.Level);
+                cmd.Parameters.AddWithValue("@exp", hero.Experience);
+                cmd.Parameters.AddWithValue("@statPts", hero.StatPoints);
+                cmd.Parameters.AddWithValue("@hp", hero.HP);      // Mevcut Can
+                cmd.Parameters.AddWithValue("@mana", hero.Mana);  // Mevcut Mana
+                cmd.Parameters.AddWithValue("@id", hero.CharacterID);
+                cmd.Parameters.AddWithValue("@maxWave", hero.MaxSurvivalWave);
+                cmd.Parameters.AddWithValue("@maxZone", hero.MaxUnlockedZoneID);
+                cmd.Parameters.AddWithValue("@currentZone", hero.CurrentZoneID);
+
+                conn.Open();
+                return cmd.ExecuteNonQuery() > 0;
+            }
+        }
+        // Mevcut sınıfın içine ekle:
+
+        public void UpdateCharacterStats(CharacterModel hero)
+        {
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                conn.Open();
+                string sql = @"
+                UPDATE Characters 
+                SET 
+                    Level = @lvl,
+                    Experience = @xp,
+                    StatPoints = @sp,
+                    CurrentHP = @hp,    -- Level atlayınca canı fullenebilir
+                    CurrentMana = @mana
+                WHERE CharacterID = @id";
+
+                SqlCommand cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@lvl", hero.Level);
+                cmd.Parameters.AddWithValue("@xp", hero.Experience);
+                cmd.Parameters.AddWithValue("@sp", hero.StatPoints);
+                cmd.Parameters.AddWithValue("@hp", hero.HP);     // CurrentHP
+                cmd.Parameters.AddWithValue("@mana", hero.Mana); // CurrentMana
+                cmd.Parameters.AddWithValue("@id", hero.CharacterID);
+
+                cmd.ExecuteNonQuery();
+            }
+        }
+        public void UpdateMaxSurvivalWave(int characterId, int newMaxWave)
+        {
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                string sql = "UPDATE Characters SET MaxSurvivalWave = @wave WHERE CharacterID = @id";
+
+                using (var cmd = new Microsoft.Data.SqlClient.SqlCommand(sql, conn))
+                {
+                    cmd.Parameters.AddWithValue("@wave", newMaxWave);
+                    cmd.Parameters.AddWithValue("@id", characterId);
+
+                    conn.Open();
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+    }
+}

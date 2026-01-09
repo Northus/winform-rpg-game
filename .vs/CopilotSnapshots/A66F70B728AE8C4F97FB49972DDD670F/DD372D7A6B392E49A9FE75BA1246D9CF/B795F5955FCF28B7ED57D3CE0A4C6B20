@@ -1,0 +1,776 @@
+﻿using System;
+using System.Drawing;
+using System.Linq;
+using System.Windows.Forms;
+using System.Threading.Tasks;
+using rpg_deneme.Business;
+using rpg_deneme.Core;
+using rpg_deneme.Models;
+using rpg_deneme.UI.Controls;
+using rpg_deneme.Data;
+
+namespace rpg_deneme.UI.Windows
+{
+    public partial class UcBlacksmith : GameWindow
+    {
+        // 4 Slot
+        private UcItemSlot slotMain;     // 0: Ekipman
+        private UcItemSlot slotMaterial; // 1: Demir
+        private UcItemSlot slotLucky;    // 2: Şans
+        private UcItemSlot slotResult;   // 3: Sonuç
+
+        private Button btnUpgrade;
+        private Label lblInfo;
+        private Label lblChance;
+
+        private UpgradeManager _upgManager = new UpgradeManager();
+        private InventoryManager _invManager = new InventoryManager();
+        private InventoryRepository _repo = new InventoryRepository();
+
+        // list of slots for hit testing
+        private readonly System.Collections.Generic.List<UcItemSlot> _slots = new System.Collections.Generic.List<UcItemSlot>();
+
+        // track attached parent form to listen for application/form closing
+        private Form _attachedParentForm;
+
+        public UcBlacksmith()
+        {
+            this.Title = "DEMİRCİ";
+            this.Size = new Size(360, 320);
+            SetupUI();
+        }
+
+        protected override void OnParentChanged(EventArgs e)
+        {
+            base.OnParentChanged(e);
+
+            // detach from previous parent
+            if (_attachedParentForm != null)
+            {
+                _attachedParentForm.FormClosing -= ParentForm_FormClosing;
+                _attachedParentForm = null;
+            }
+
+            // attach to new parent so we can flush on app/form close
+            if (this.ParentForm != null)
+            {
+                _attachedParentForm = this.ParentForm;
+                _attachedParentForm.FormClosing += ParentForm_FormClosing;
+            }
+        }
+
+        // Ensure when window is closed via GameWindow.CloseWindow (ESC or header close) we flush
+        protected override bool OnClosing()
+        {
+            // Move any remaining items back to inventory
+            try
+            {
+                FlushSlotsToInventory();
+            }
+            catch
+            {
+                // ignore errors during closing
+            }
+            return true; // allow close/hide
+        }
+
+        private void ParentForm_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            // flush on application/form exit as well
+            try
+            {
+                FlushSlotsToInventory();
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        // Dışarıdan veya FormMain'den çağrılabilir: Slotlardaki eşyaların durumunu tazeler
+        public void RefreshFromDb()
+        {
+            ReloadSlotItem(slotMain);
+            ReloadSlotItem(slotMaterial);
+            ReloadSlotItem(slotLucky);
+            ReloadSlotItem(slotResult);
+            UpdateInfo();
+        }
+
+        // Tek bir slotu veritabanından InstanceID ile kontrol edip günceller
+        private void ReloadSlotItem(UcItemSlot slot)
+        {
+            if (slot == null || slot.Item == null) return;
+
+            var hero = Core.SessionManager.CurrentCharacter;
+            if (hero == null) return;
+
+            var freshItem = _repo.GetItemAt(hero.CharacterID, Enums.ItemLocation.Storage, slot.Item.SlotIndex);
+
+            if (freshItem != null && freshItem.InstanceID == slot.Item.InstanceID)
+            {
+                // Eşya hala depoda ve aynı instance, güncelle
+                slot.SetItem(freshItem);
+            }
+            else
+            {
+                // Eşya bulunamadı veya taşındı (Tükendi, satıldı veya envantere çekildi)
+                slot.SetItem(null);
+            }
+        }
+
+        private void SetupUI()
+        {
+            int startX = 30;
+            int startY = 60;
+            int gap = 80;
+
+            // make the whole control accept drops as a fallback
+            this.AllowDrop = true;
+            this.DragEnter += UcBlacksmith_DragEnter;
+            this.DragDrop += UcBlacksmith_DragDrop;
+
+            // 1. Slot: Ekipman
+            slotMain = CreateSlot(0, startX, startY, "EKİPMAN");
+
+            // 2. Slot: Malzeme
+            slotMaterial = CreateSlot(1, startX + gap, startY, "MALZEME");
+
+            // 3. Slot: Şans
+            slotLucky = CreateSlot(2, startX + gap * 2, startY, "ŞANS");
+
+            Label lblArrow = new Label
+            {
+                Text = "▼",
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI", 16, FontStyle.Bold),
+                AutoSize = true,
+                Location = new Point(startX + gap - 10, startY + 60)
+            };
+            this.Controls.Add(lblArrow);
+
+            // 4. Slot: Sonuç
+            slotResult = CreateSlot(3, startX + gap - 10, startY + 100, "SONUÇ");
+            slotResult.BackColor = Color.FromArgb(60, 70, 60); // Yeşilimsi ton
+
+            // Bilgi Labelleri
+            lblInfo = new Label
+            {
+                Text = "Gerekli: -",
+                ForeColor = Color.Silver,
+                Location = new Point(20, 230),
+                AutoSize = true
+            };
+            this.Controls.Add(lblInfo);
+
+            lblChance = new Label
+            {
+                Text = "Şans: -",
+                ForeColor = Color.Gold,
+                Location = new Point(200, 230),
+                AutoSize = true,
+                Font = new Font("Segoe UI", 10, FontStyle.Bold)
+            };
+            this.Controls.Add(lblChance);
+
+            // Yükselt Butonu
+            btnUpgrade = new Button
+            {
+                Text = "YÜKSELT",
+                Size = new Size(100, 35),
+                Location = new Point(120, 260),
+                BackColor = Color.DarkRed,
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Cursor = Cursors.Hand
+            };
+            btnUpgrade.Click += BtnUpgrade_Click;
+            this.Controls.Add(btnUpgrade);
+        }
+
+        private UcItemSlot CreateSlot(int index, int x, int y, string placeholder)
+        {
+            Label lbl = new Label
+            {
+                Text = placeholder,
+                ForeColor = Color.Gray,
+                Font = new Font("Segoe UI", 7),
+                Location = new Point(x, y - 15),
+                AutoSize = true
+            };
+            this.Controls.Add(lbl);
+
+            UcItemSlot slot = new UcItemSlot(index);
+            slot.Location = new Point(x, y);
+            slot.AllowDrop = true;
+            slot.OnItemDropped += Slot_OnItemDropped;
+
+            // Yeni: slot içeriği değiştiğinde UI'ı güncelle
+            slot.OnItemChanged += (s, it) => { UpdateInfo(); };
+
+            // Her slot için Sağ Tık = Geri Al
+            slot.MouseUp += (s, e) =>
+            {
+                if (e.Button == MouseButtons.Right)
+                {
+                    if (index == 3) ResultSlot_Click(s, e); // Sonuç slotu için özel işlem
+                    else ReturnSlotItem((UcItemSlot)s);     // Diğerleri için geri alma
+                }
+            };
+
+            this.Controls.Add(slot);
+
+            // track for container-level hit testing
+            _slots.Add(slot);
+            return slot;
+        }
+
+        // --- SÜRÜKLE BIRAK MANTIĞI ---
+        private void Slot_OnItemDropped(object sender, ItemInstance droppedItem)
+        {
+            UcItemSlot targetSlot = (UcItemSlot)sender;
+
+            var hero = Core.SessionManager.CurrentCharacter;
+            if (hero == null) return;
+
+            // validate target occupancy: allow merging into material slot
+            if (targetSlot.Item != null)
+            {
+                // allow merge only when target is material and templates match and stackable
+                if (!(targetSlot == slotMaterial && droppedItem.IsStackable && targetSlot.Item.TemplateID == droppedItem.TemplateID))
+                {
+                    ShowStatus("Hedef dolu!", Color.OrangeRed);
+                    return;
+                }
+            }
+
+            // Helper to validate item fits the logical slot
+            bool ValidateForTarget(ItemInstance item, UcItemSlot target, out string message)
+            {
+                message = null;
+
+                if (target == slotMain)
+                {
+                    if (!_upgManager.IsUpgradeable(item))
+                    {
+                        message = "Sadece ekipman (silah/zırh) koyabilirsiniz.";
+                        return false;
+                    }
+                }
+                else if (target == slotMaterial)
+                {
+                    if (item.TemplateID != UpgradeManager.UPGRADE_MATERIAL_ID)
+                    {
+                        message = "Bu slot yalnızca yükseltme malzemesi kabul eder.";
+                        return false;
+                    }
+                }
+                else if (target == slotLucky)
+                {
+                    if (!_upgManager.IsLuckyItem(item.TemplateID))
+                    {
+                        message = "Bu slot yalnızca şans eşyası kabul eder.";
+                        return false;
+                    }
+                }
+                else if (target == slotResult)
+                {
+                    // result slot is read-only for direct drops
+                    message = "Sonuç slotuna doğrudan koyamazsınız.";
+                    return false;
+                }
+
+                return true;
+            }
+
+            // --- Dropped from Inventory: move item into Storage (DB) to avoid ghost items ---
+            if (droppedItem.Location == Enums.ItemLocation.Inventory)
+            {
+                // Validate
+                if (!ValidateForTarget(droppedItem, targetSlot, out string invalidMsg))
+                {
+                    ShowStatus(invalidMsg ?? "Uygun olmayan eşya.", Color.OrangeRed);
+                    return;
+                }
+
+                // Special handling: if target is material slot and both are stackable of same template, merge partially
+                if (targetSlot == slotMaterial && droppedItem.IsStackable)
+                {
+                    // If target already has the same template, add up to max stack
+                    if (targetSlot.Item != null && targetSlot.Item.TemplateID == droppedItem.TemplateID)
+                    {
+                        int current = targetSlot.Item.Count;
+                        int max = targetSlot.Item.MaxStack > 0 ? targetSlot.Item.MaxStack : 9999;
+                        int space = Math.Max(0, max - current);
+                        if (space > 0)
+                        {
+                            int toMove = Math.Min(space, droppedItem.Count);
+                            // increment target in DB
+                            _repo.IncrementItemCount(targetSlot.Item.InstanceID, toMove);
+                            // decrease inventory item
+                            _repo.ConsumeItem(droppedItem.InstanceID, toMove);
+
+                            // reload both sides
+                            var updatedTarget = _repo.GetItemAt(hero.CharacterID, Enums.ItemLocation.Storage, targetSlot.SlotIndex);
+                            targetSlot.SetItem(updatedTarget);
+
+                            // If inventory item fully consumed, refresh inventory list else just refresh
+                            if (droppedItem.Count <= toMove)
+                            {
+                                if (this.ParentForm is FormMain fmx) fmx.RefreshInventoryOnly();
+                            }
+                            else
+                            {
+                                if (this.ParentForm is FormMain fmy) fmy.RefreshInventoryOnly();
+                            }
+
+                            UpdateInfo();
+                            return;
+                        }
+                        else
+                        {
+                            ShowStatus("Malzeme slotu dolu.", Color.Orange);
+                            return;
+                        }
+                    }
+
+                    // If target empty: move as much as fits into a new storage row (max stack)
+                    if (targetSlot.Item == null)
+                    {
+                        int max = droppedItem.MaxStack > 0 ? droppedItem.MaxStack : 9999;
+                        int toStore = Math.Min(max, droppedItem.Count);
+
+                        // Create a new storage item row with count = toStore
+                        var newItem = new ItemInstance
+                        {
+                            TemplateID = droppedItem.TemplateID,
+                            OwnerID = hero.CharacterID,
+                            SlotIndex = targetSlot.SlotIndex,
+                            Grade = droppedItem.Grade,
+                            Location = Enums.ItemLocation.Storage,
+                            Count = toStore,
+                            Name = droppedItem.Name,
+                            ItemType = droppedItem.ItemType,
+                            IsStackable = droppedItem.IsStackable,
+                            MaxStack = droppedItem.MaxStack,
+                            UpgradeLevel = droppedItem.UpgradeLevel
+                        };
+
+                        bool added = _repo.AddItemDirectly(newItem);
+                        if (!added)
+                        {
+                            ShowStatus("Malzeme depoya eklenemedi.", Color.OrangeRed);
+                            return;
+                        }
+
+                        // consume from inventory
+                        _repo.ConsumeItem(droppedItem.InstanceID, toStore);
+
+                        // refresh UI
+                        var stored = _repo.GetItemAt(hero.CharacterID, Enums.ItemLocation.Storage, targetSlot.SlotIndex);
+                        targetSlot.SetItem(stored);
+
+                        if (this.ParentForm is FormMain fmx2) fmx2.RefreshInventoryOnly();
+
+                        UpdateInfo();
+                        return;
+                    }
+                }
+
+                // Default behavior: move full instance to storage slot index
+                bool moved = _repo.MoveItemLocation(droppedItem.InstanceID, Enums.ItemLocation.Storage, targetSlot.SlotIndex);
+                if (!moved)
+                {
+                    ShowStatus("Eşya depoya taşınamadı.", Color.OrangeRed);
+                    return;
+                }
+
+                // Fetch fresh instance from DB and place into UI slot
+                var storedDef = _repo.GetItemAt(hero.CharacterID, Enums.ItemLocation.Storage, targetSlot.SlotIndex);
+                targetSlot.SetItem(storedDef);
+
+                // update UI state
+                UpdateInfo();
+
+                // Refresh inventory UI so original slot clears
+                if (this.ParentForm is FormMain fm) fm.RefreshInventoryOnly();
+                return;
+            }
+            else if (droppedItem.Location == Enums.ItemLocation.Storage)
+            {
+                // Internal blacksmith slot-to-slot moves.
+                UcItemSlot sourceSlot = new[] { slotMain, slotMaterial, slotLucky, slotResult }
+                .FirstOrDefault(s => s != null && s.Item != null && s.Item.InstanceID == droppedItem.InstanceID);
+
+                // If not found among our visible slots, attempt a DB-based move (external storage drag)
+                if (sourceSlot == null)
+                {
+                    // Validate using DB template info to avoid invalid items
+                    if (!ValidateForTarget(droppedItem, targetSlot, out string invalidMsg2))
+                    {
+                        ShowStatus(invalidMsg2 ?? "Uygun olmayan eşya.", Color.OrangeRed);
+                        return;
+                    }
+
+                    // Move DB slot index to our target
+                    bool movedExt = _repo.MoveItemLocation(droppedItem.InstanceID, Enums.ItemLocation.Storage, targetSlot.SlotIndex);
+                    if (!movedExt)
+                    {
+                        ShowStatus("Depodaki eşya taşınamadı.", Color.OrangeRed);
+                        return;
+                    }
+
+                    var storedExt = _repo.GetItemAt(hero.CharacterID, Enums.ItemLocation.Storage, targetSlot.SlotIndex);
+                    targetSlot.SetItem(storedExt);
+
+                    UpdateInfo();
+                    return;
+                }
+
+                // If dropping onto same slot, do nothing
+                if (sourceSlot == targetSlot) return;
+
+                // Validation
+                if (!ValidateForTarget(droppedItem, targetSlot, out string invalidMsg3))
+                {
+                    ShowStatus(invalidMsg3 ?? "Uygun olmayan eşya.", Color.OrangeRed);
+                    return;
+                }
+
+                // Special merge logic for storage->storage when moving materials
+                if (targetSlot == slotMaterial && sourceSlot.Item != null && sourceSlot.Item.IsStackable
+                    && targetSlot.Item != null && targetSlot.Item.TemplateID == sourceSlot.Item.TemplateID)
+                {
+                    int current = targetSlot.Item.Count;
+                    int max = targetSlot.Item.MaxStack > 0 ? targetSlot.Item.MaxStack : 9999;
+                    int space = Math.Max(0, max - current);
+                    if (space > 0)
+                    {
+                        int toMove = Math.Min(space, sourceSlot.Item.Count);
+                        _repo.IncrementItemCount(targetSlot.Item.InstanceID, toMove);
+                        _repo.ConsumeItem(sourceSlot.Item.InstanceID, toMove);
+
+                        // reload both slots
+                        ReloadSlotItem(sourceSlot);
+                        ReloadSlotItem(targetSlot);
+                        UpdateInfo();
+                        if (this.ParentForm is FormMain fm3) fm3.RefreshInventoryOnly();
+                        return;
+                    }
+                    else
+                    {
+                        ShowStatus("Malzeme slotu dolu.", Color.Orange);
+                        return;
+                    }
+                }
+
+                // Move DB storage index to new target slot so DB reflects UI
+                bool moved2 = _repo.MoveItemLocation(droppedItem.InstanceID, Enums.ItemLocation.Storage, targetSlot.SlotIndex);
+                if (!moved2)
+                {
+                    ShowStatus("Depo içinde taşınamadı.", Color.OrangeRed);
+                    return;
+                }
+
+                // Update UI: clear source and set target with fresh DB object
+                sourceSlot.SetItem(null);
+                var newStored = _repo.GetItemAt(hero.CharacterID, Enums.ItemLocation.Storage, targetSlot.SlotIndex);
+                targetSlot.SetItem(newStored);
+
+                UpdateInfo();
+
+                if (this.ParentForm is FormMain fm2) fm2.RefreshInventoryOnly();
+                return;
+            }
+
+            // Other locations are ignored
+        }
+
+        private void UpdateInfo()
+        {
+            if (slotMain.Item == null)
+            {
+                lblInfo.Text = "Lütfen bir ekipman koyun.";
+                lblInfo.ForeColor = Color.Silver;
+                lblChance.Text = "";
+                return;
+            }
+
+            int reqCount = _upgManager.GetRequiredMaterialCount(slotMain.Item.UpgradeLevel);
+            int baseChance = _upgManager.GetBaseSuccessRate(slotMain.Item.UpgradeLevel);
+            int bonusChance = (slotLucky.Item != null) ? _upgManager.GetLuckyItemBonus(slotLucky.Item.TemplateID) : 0;
+            int totalChance = Math.Min(100, baseChance + bonusChance);
+
+            lblInfo.Text = $"Gerekli Malzeme: {reqCount} adet";
+            lblInfo.ForeColor = Color.Silver;
+
+            lblChance.Text = $"Başarı Şansı: %{totalChance}";
+            if (totalChance < 50) lblChance.ForeColor = Color.Red;
+            else if (totalChance < 80) lblChance.ForeColor = Color.Orange;
+            else lblChance.ForeColor = Color.LimeGreen;
+        }
+
+        // transient status helper using Task.Delay instead of Timer
+        private async void ShowStatus(string text, Color color)
+        {
+            lblInfo.Text = text;
+            lblInfo.ForeColor = color;
+            try
+            {
+                await Task.Delay(3000);
+            }
+            catch
+            {
+                // ignored
+            }
+            UpdateInfo();
+        }
+
+        // Flush slots into player's inventory using SmartWithdraw semantics
+        public void FlushSlotsToInventory()
+        {
+            var hero = Core.SessionManager.CurrentCharacter;
+            if (hero == null) return;
+
+            var slots = new[] { slotMain, slotMaterial, slotLucky, slotResult };
+
+            foreach (var s in slots)
+            {
+                if (s == null || s.Item == null) continue;
+
+                try
+                {
+                    // If the item was placed here and moved to DB Storage earlier
+                    if (s.Item.Location == Enums.ItemLocation.Storage)
+                    {
+                        _invManager.SmartWithdraw(hero, s.Item);
+                    }
+                    else
+                    {
+                        // If item was reserved (dropped but not moved), unreserve it so it reappears in inventory UI
+                        if (s.Item.InstanceID > 0 && Core.SessionManager.IsReserved(s.Item.InstanceID))
+                        {
+                            Core.SessionManager.UnreserveItem(s.Item.InstanceID);
+                        }
+                        else if (s.Item.Location != Enums.ItemLocation.Inventory)
+                        {
+                            // If somehow it's neither storage nor inventory, attempt safe move back to inventory
+                            // Prefer merging into existing partial stacks
+                            bool moved = false;
+
+                            if (s.Item.IsStackable)
+                            {
+                                var existing = _repo.FindStackableItemWithCapacity(hero.CharacterID, s.Item.TemplateID, s.Item.MaxStack);
+                                if (existing != null)
+                                {
+                                    // Try to transfer into that stack (will merge)
+                                    moved = _invManager.TransferItem(hero, s.Item, Enums.ItemLocation.Inventory, existing.SlotIndex);
+                                    if (moved)
+                                    {
+                                        ShowStatus("Eşya envantere taşındı ve birleştirildi.", Color.LimeGreen);
+                                    }
+                                }
+                            }
+
+                            if (!moved)
+                            {
+                                int empty = _repo.FindFirstEmptyInventorySlot(hero.CharacterID);
+                                if (empty != -1)
+                                {
+                                    moved = _invManager.TransferItem(hero, s.Item, Enums.ItemLocation.Inventory, empty);
+                                    if (moved) ShowStatus("Eşya envantere taşındı.", Color.LimeGreen);
+                                    else ShowStatus("Eşya envantere taşınamadı.", Color.OrangeRed);
+                                }
+                                else
+                                {
+                                    ShowStatus("Envanterde yer yok!", Color.OrangeRed);
+                                }
+                            }
+                        }
+                    }
+                }
+                catch
+                {
+                    // ignore per-item errors to avoid blocking other moves
+                }
+                finally
+                {
+                    s.SetItem(null);
+                }
+            }
+
+            NotifyMainForm();
+            ShowStatus("Demircide kalan eşyalar envantere taşındı.", Color.LimeGreen);
+        }
+
+        // --- YÜKSELTME ---
+        private void BtnUpgrade_Click(object sender, EventArgs e)
+        {
+            if (slotMain.Item == null) return;
+            if (slotResult.Item != null)
+            {
+                ShowStatus("Önce sonuç slotundaki eşyayı almalısın!", Color.OrangeRed);
+                return;
+            }
+
+            // İşlemi Yap
+            int result = _upgManager.PerformUpgrade(slotMain.Item, slotMaterial.Item, slotLucky.Item);
+
+            if (result == -1)
+            {
+                ShowStatus("Yeterli yükseltme malzemen yok!", Color.OrangeRed);
+                return;
+            }
+
+            if (result == 1) // BAŞARILI
+            {
+                ShowStatus("BAŞARILI! Eşya seviye atladı.", Color.LimeGreen);
+
+                //1. Ekipmanı Result Slotuna Taşı (Görsel ve Mantıksal)
+                // DB'de item zaten güncellendi. Bizim referansı Result'a atıp Main'i temizlememiz lazım.
+                // Main slotundaki referansı alıp Result'a koyuyoruz
+                var upgradedItem = slotMain.Item;
+                upgradedItem.UpgradeLevel++; // UI'da hemen gözüksün diye manuel artırıyoruz (DB zaten arttı)
+
+                slotResult.SetItem(upgradedItem);
+                slotMain.SetItem(null);
+
+                UpdateInfo();
+            }
+            else // BAŞARISIZ (YANDI)
+            {
+                ShowStatus("BAŞARISIZ... Eşya yok oldu.", Color.OrangeRed);
+                slotMain.SetItem(null); // Eşya DB'den silindiği için UI'dan da sil.
+
+                UpdateInfo();
+            }
+
+            // --- MALZEME GÜNCELLEME (HAYALET VE TÜKETİM SORUNU ÇÖZÜMÜ) ---
+            ReloadSlotItem(slotMaterial);
+            ReloadSlotItem(slotLucky);
+
+            NotifyMainForm();
+        }
+
+        // --- GERİ ALMA (SAĞ TIK) ---
+        private void ReturnSlotItem(UcItemSlot slot)
+        {
+            if (slot == null || slot.Item == null) return;
+
+            var hero = Core.SessionManager.CurrentCharacter;
+
+            // If item was reserved (not moved to storage), just unreserve and refresh
+            if (slot.Item.InstanceID > 0 && Core.SessionManager.IsReserved(slot.Item.InstanceID))
+            {
+                Core.SessionManager.UnreserveItem(slot.Item.InstanceID);
+                slot.SetItem(null);
+                NotifyMainForm();
+                ShowStatus("Eşya geri alındı.", Color.LimeGreen);
+                UpdateInfo();
+                return;
+            }
+
+            // Otherwise handle storage -> inventory
+            // 1. Envanterde yer bul
+            // Try to merge into existing partial stack first
+            bool moved = false;
+
+            try
+            {
+                if (slot.Item.IsStackable)
+                {
+                    var existing = _repo.FindStackableItemWithCapacity(hero.CharacterID, slot.Item.TemplateID, slot.Item.MaxStack);
+                    if (existing != null)
+                    {
+                        moved = _invManager.TransferItem(hero, slot.Item, Enums.ItemLocation.Inventory, existing.SlotIndex);
+                        if (moved)
+                        {
+                            slot.SetItem(null);
+                            NotifyMainForm();
+                            ShowStatus("Eşya envantere taşındı ve birleştirildi.", Color.LimeGreen);
+                            UpdateInfo();
+                            return;
+                        }
+                    }
+                }
+
+                // 2. Taşıma İşlemi (Storage -> Inventory) veya normal move
+                int emptySlot = _repo.FindFirstEmptyInventorySlot(hero.CharacterID);
+                if (emptySlot == -1)
+                {
+                    ShowStatus("Envanterde yer yok!", Color.OrangeRed);
+                    return;
+                }
+
+                bool transferred = _invManager.TransferItem(hero, slot.Item, Enums.ItemLocation.Inventory, emptySlot);
+                if (!transferred)
+                {
+                    ShowStatus("Eşya envantere taşınamadı.", Color.OrangeRed);
+                    return;
+                }
+
+                // 3. UI Temizle
+                slot.SetItem(null); // GHOST ÇÖZÜMÜ: Elle null yapıyoruz.
+
+                NotifyMainForm();
+                ShowStatus("Eşya envantere taşındı.", Color.LimeGreen);
+                UpdateInfo();
+            }
+            catch
+            {
+                ShowStatus("Eşya taşıma sırasında hata oluştu.", Color.OrangeRed);
+            }
+        }
+
+        // --- SONUCU ALMA ---
+        private void ResultSlot_Click(object sender, MouseEventArgs e)
+        {
+            if (slotResult.Item == null) return;
+
+            // Aynı geri alma mantığı işler
+            ReturnSlotItem(slotResult);
+        }
+
+        private void NotifyMainForm()
+        {
+            if (this.ParentForm is FormMain main) main.RefreshStats();
+        }
+
+        // container-level dragenter
+        private void UcBlacksmith_DragEnter(object sender, DragEventArgs e)
+        {
+            // Be permissive: if there's any data, allow move. This avoids GetDataPresent mismatches.
+            try
+            {
+                if (e.Data != null)
+                {
+                    e.Effect = DragDropEffects.Move;
+                    return;
+                }
+            }
+            catch
+            {
+                // fallback
+            }
+            e.Effect = DragDropEffects.None;
+        }
+
+        // container-level dragdrop: find slot under cursor and forward
+        private void UcBlacksmith_DragDrop(object sender, DragEventArgs e)
+        {
+            if (!e.Data.GetDataPresent(typeof(ItemInstance))) return;
+            var item = (ItemInstance)e.Data.GetData(typeof(ItemInstance));
+            // screen -> client
+            var screenPoint = new System.Drawing.Point(e.X, e.Y);
+            var clientPoint = this.PointToClient(screenPoint);
+
+            // find slot whose bounds contain point
+            var target = _slots.FirstOrDefault(s => s.Bounds.Contains(clientPoint));
+            if (target != null)
+            {
+                // forward to existing handler
+                Slot_OnItemDropped(target, item);
+            }
+        }
+    }
+}

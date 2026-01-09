@@ -1,0 +1,24 @@
+﻿using rpg_deneme.Data;
+using rpg_deneme.UI;
+
+namespace rpg_deneme
+{
+    internal static class Program
+    {
+        /// <summary>
+        ///  The main entry point for the application.
+        /// </summary>
+        [STAThread]
+        static void Main()
+        {
+            // To customize application configuration such as set high DPI settings or default font,
+            // see https://aka.ms/applicationconfiguration.
+            ApplicationConfiguration.Initialize();
+
+            // Ensure local SQLite DB file + schema exist
+            SQLiteSchemaInitializer.EnsureCreated();
+
+            Application.Run(new FormCharSelect());
+        }
+    }
+}

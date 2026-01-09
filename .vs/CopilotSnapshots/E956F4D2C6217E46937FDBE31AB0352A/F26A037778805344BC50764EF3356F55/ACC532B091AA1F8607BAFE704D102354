@@ -1,0 +1,79 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using rpg_deneme.Data;
+using rpg_deneme.Models;
+using rpg_deneme.Core;
+
+namespace rpg_deneme.Business
+{
+    public class ConsumableManager
+    {
+        private InventoryRepository _repo = new InventoryRepository();
+        private CharacterRepository _charRepo = new CharacterRepository();
+
+        public (bool Success, string Message) UseItem(CharacterModel hero, ItemInstance item)
+        {
+            int maxHP = StatManager.CalculateMaxHP(hero.VIT, hero.Level);
+            if (hero.HP >= maxHP)
+            {
+                // HATA DÖNDÜR: Kullanma, eşyayı eksiltme.
+                return new (false, "Canınız zaten dolu!");
+            }
+            // 1. Cooldown Kontrolü
+            if (item.RemainingCooldownSeconds > 0)
+            {
+                return (false, $"Henüz hazır değil! ({item.RemainingCooldownSeconds} sn)");
+            }
+
+            // 2. Etkiyi Uygula
+            bool effectApplied = ApplyEffect(hero, item);
+
+            if (effectApplied)
+            {
+                // 3. Veritabanı İşlemleri
+                // a. Cooldown süresini başlat (LastUsed güncelle)
+                _charRepo.UpdateProgress(hero);
+                if (item.Cooldown > 0)
+                    _repo.UpdateLastUsed(item.InstanceID);
+
+                // b. Eşyayı tüket (Adet düşür veya sil)
+                _repo.ConsumeItem(item.InstanceID, 1);
+
+                return (true, "Eşya kullanıldı.");
+            }
+
+            return (false, "Bu eşya şu an kullanılamaz.");
+
+        }
+
+        private bool ApplyEffect(CharacterModel hero, ItemInstance item)
+        {
+            switch (item.EffectType)
+            {
+                case Enums.ItemEffectType.RestoreHP:
+                    int maxHP = StatManager.CalculateMaxHP(hero.VIT, hero.Level);
+                    hero.HP += item.EffectValue;
+
+                    // Max canı geçmesin
+                    if (hero.HP > maxHP) hero.HP = maxHP;
+
+                    return true;
+
+                case Enums.ItemEffectType.RestoreMana:
+                    int maxMana = StatManager.CalculateMaxMana(hero.INT, hero.Level);
+                    hero.Mana += item.EffectValue;
+
+                    // Max manayı geçmesin
+                    if (hero.Mana > maxMana) hero.Mana = maxMana;
+
+                    return true;
+
+                default:
+                    return false; // Tanımsız etki
+            }
+        }
+    }
+}

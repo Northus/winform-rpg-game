@@ -1,0 +1,288 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using Microsoft.Data.Sqlite;
+using rpg_deneme.Core;
+using rpg_deneme.Data;
+using rpg_deneme.Models;
+
+namespace rpg_deneme.Business
+{
+    public class InventoryManager
+    {
+        private readonly InventoryRepository _repo = new InventoryRepository();
+
+        public List<ItemInstance> GetInventory(int charId)
+        {
+            return _repo.GetCharacterInventory(charId);
+        }
+
+        public bool MoveItemToSlot(long instanceId, int targetSlotIndex)
+        {
+            return _repo.MoveItem(instanceId, targetSlotIndex);
+        }
+
+        public bool MoveItemToSlotAndLocation(long instanceId, Core.Enums.ItemLocation newLocation, int targetSlotIndex)
+        {
+            return _repo.MoveItemLocation(instanceId, newLocation, targetSlotIndex);
+        }
+
+        public bool AddItemToInventory(ItemInstance item)
+        {
+            var templateBasic = _repo.GetTemplateBasicInfo(item.TemplateID);
+
+            bool isStackable = item.IsStackable || templateBasic.IsStackable;
+
+            int maxStackLimit =1;
+            if (isStackable)
+            {
+                if (item.MaxStack >1) maxStackLimit = item.MaxStack;
+                else if (templateBasic.MaxStack >1) maxStackLimit = templateBasic.MaxStack;
+                else maxStackLimit =20;
+            }
+
+            while (item.Count >0)
+            {
+                ItemInstance existingStack = null;
+                if (isStackable)
+                {
+                    existingStack = _repo.FindStackableItemWithCapacity(item.OwnerID, item.TemplateID, maxStackLimit);
+                }
+
+                if (existingStack != null)
+                {
+                    int spaceAvailable = maxStackLimit - existingStack.Count;
+                    int amountToAdd = System.Math.Min(spaceAvailable, item.Count);
+
+                    bool success = _repo.IncrementItemCount(existingStack.InstanceID, amountToAdd);
+                    if (!success) return false;
+
+                    item.Count -= amountToAdd;
+                }
+                else
+                {
+                    int emptySlot = _repo.FindFirstEmptyInventorySlot(item.OwnerID);
+                    if (emptySlot == -1) return false;
+
+                    int amountToInsert = System.Math.Min(maxStackLimit, item.Count);
+
+                    item.SlotIndex = emptySlot;
+
+                    int originalCount = item.Count;
+                    item.Count = amountToInsert;
+
+                    bool success = InsertNewItemToDB(item);
+
+                    item.Count = originalCount;
+
+                    if (!success) return false;
+
+                    item.Count -= amountToInsert;
+                }
+            }
+
+            return true;
+        }
+
+        private bool InsertNewItemToDB(ItemInstance item)
+        {
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                conn.Open();
+                string sql = @"
+                INSERT INTO ItemInstances 
+                (TemplateID, OwnerID, SlotIndex, Grade, Location, Count, UpgradeLevel) 
+                VALUES 
+                (@tid, @oid, @slot, @grade, @loc, @count, @upg)";
+
+                using var cmd = new SqliteCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@tid", item.TemplateID);
+                cmd.Parameters.AddWithValue("@oid", item.OwnerID);
+                cmd.Parameters.AddWithValue("@slot", item.SlotIndex);
+                cmd.Parameters.AddWithValue("@grade", (byte)item.Grade);
+                cmd.Parameters.AddWithValue("@loc", (byte)item.Location);
+                cmd.Parameters.AddWithValue("@count", item.Count);
+                cmd.Parameters.AddWithValue("@upg", item.UpgradeLevel);
+
+                return cmd.ExecuteNonQuery() >0;
+            }
+        }
+
+        public (bool Success, string Message) SplitItem(ItemInstance item, int amountToSplit)
+        {
+            if (amountToSplit >= item.Count) return (false, "Hatalı miktar.");
+            if (amountToSplit <= 0) return (false, "En az1 adet bölmelisin.");
+
+            int emptySlot = _repo.FindFirstEmptyInventorySlot(item.OwnerID);
+            if (emptySlot == -1) return (false, "Bölmek için boş yer yok!");
+
+            ItemInstance newItem = new ItemInstance
+            {
+                TemplateID = item.TemplateID,
+                OwnerID = item.OwnerID,
+                SlotIndex = emptySlot,
+                Count = amountToSplit,
+                Name = item.Name,
+                Grade = item.Grade,
+                ItemType = item.ItemType,
+                IsStackable = item.IsStackable,
+                MaxStack = item.MaxStack,
+                Location = Core.Enums.ItemLocation.Inventory
+            };
+
+            bool inserted = _repo.AddItemDirectly(newItem);
+
+            if (inserted)
+            {
+                _repo.ConsumeItem(item.InstanceID, amountToSplit);
+                return (true, "Eşya bölündü.");
+            }
+
+            return (false, "Veritabanı hatası.");
+        }
+
+        public bool MergeItems(ItemInstance sourceItem, ItemInstance targetItem)
+        {
+            if (sourceItem.TemplateID != targetItem.TemplateID) return false;
+            if (!targetItem.IsStackable) return false;
+            if (targetItem.Count >= targetItem.MaxStack) return false;
+
+            int spaceAvailable = targetItem.MaxStack - targetItem.Count;
+            int amountToMove = System.Math.Min(spaceAvailable, sourceItem.Count);
+
+            if (amountToMove <=0) return false;
+
+            bool incSuccess = _repo.IncrementItemCount(targetItem.InstanceID, amountToMove);
+
+            if (incSuccess)
+            {
+                _repo.ConsumeItem(sourceItem.InstanceID, amountToMove);
+                return true;
+            }
+
+            return false;
+        }
+
+        public int FindFirstEmptyStorageSlot(int characterId)
+        {
+            var allItems = _repo.GetCharacterInventory(characterId);
+            var storageItems = allItems.Where(x => x.Location == Core.Enums.ItemLocation.Storage).ToList();
+
+            for (int i =0; i <42; i++)
+            {
+                if (!storageItems.Any(x => x.SlotIndex == i))
+                    return i;
+            }
+            return -1;
+        }
+
+        public int FindFirstEmptyInventorySlot(int characterId) => _repo.FindFirstEmptyInventorySlot(characterId);
+
+        public List<ItemInstance> GetSharedStorage() => _repo.GetSharedStorageItems();
+
+        public bool TransferItem(CharacterModel hero, ItemInstance sourceItem, Enums.ItemLocation targetLoc, int targetSlot)
+        {
+            ItemInstance targetItem = null;
+
+            if (targetLoc == Enums.ItemLocation.Inventory)
+                targetItem = _repo.GetItemAt(hero.CharacterID, targetLoc, targetSlot);
+            else if (targetLoc == Enums.ItemLocation.Storage)
+            {
+                var allStorage = GetSharedStorage();
+                targetItem = allStorage.FirstOrDefault(x => x.SlotIndex == targetSlot);
+            }
+
+            if (targetItem != null)
+            {
+                if (sourceItem.TemplateID != targetItem.TemplateID) return false;
+                if (!targetItem.IsStackable) return false;
+                if (targetItem.Count >= targetItem.MaxStack) return false;
+
+                int spaceAvailable = targetItem.MaxStack - targetItem.Count;
+                int amountToMove = Math.Min(spaceAvailable, sourceItem.Count);
+                if (amountToMove <=0) return false;
+
+                _repo.IncrementItemCount(targetItem.InstanceID, amountToMove);
+                _repo.ConsumeItem(sourceItem.InstanceID, amountToMove);
+                return true;
+            }
+
+            _repo.MoveItemLocation(sourceItem.InstanceID, targetLoc, targetSlot);
+
+            if (targetLoc == Enums.ItemLocation.Inventory)
+            {
+                _repo.UpdateItemOwner(sourceItem.InstanceID, hero.CharacterID);
+            }
+
+            return true;
+        }
+
+        public void SmartWithdraw(CharacterModel hero, ItemInstance sourceItem)
+        {
+            if (hero == null || sourceItem == null) return;
+
+            ItemInstance refreshed = GetSharedStorage().FirstOrDefault(x => x.InstanceID == sourceItem.InstanceID);
+            if (refreshed == null) return;
+
+            while (true)
+            {
+                refreshed = GetSharedStorage().FirstOrDefault(x => x.InstanceID == sourceItem.InstanceID);
+                if (refreshed == null) return;
+
+                var existingStack = _repo.FindStackableItemWithCapacity(hero.CharacterID, refreshed.TemplateID, refreshed.MaxStack);
+                if (existingStack == null) break;
+
+                int spaceAvailable = existingStack.MaxStack - existingStack.Count;
+                if (spaceAvailable <=0) break;
+
+                int amountToMove = Math.Min(spaceAvailable, refreshed.Count);
+                if (amountToMove <=0) break;
+
+                bool inc = _repo.IncrementItemCount(existingStack.InstanceID, amountToMove);
+                if (!inc) break;
+
+                _repo.ConsumeItem(refreshed.InstanceID, amountToMove);
+            }
+
+            while (true)
+            {
+                refreshed = GetSharedStorage().FirstOrDefault(x => x.InstanceID == sourceItem.InstanceID);
+                if (refreshed == null) return;
+
+                int remaining = refreshed.Count;
+                if (remaining <=0) return;
+
+                int emptySlot = FindFirstEmptyInventorySlot(hero.CharacterID);
+                if (emptySlot == -1) return;
+
+                int amountToMove = Math.Min(remaining, refreshed.MaxStack);
+
+                if (amountToMove == remaining)
+                {
+                    bool moved = _repo.MoveItemLocation(refreshed.InstanceID, Enums.ItemLocation.Inventory, emptySlot);
+                    if (moved) _repo.UpdateItemOwner(refreshed.InstanceID, hero.CharacterID);
+                    return;
+                }
+
+                ItemInstance newItem = new ItemInstance
+                {
+                    TemplateID = refreshed.TemplateID,
+                    OwnerID = hero.CharacterID,
+                    SlotIndex = emptySlot,
+                    Count = amountToMove,
+                    Grade = refreshed.Grade,
+                    Location = Enums.ItemLocation.Inventory,
+                    ItemType = refreshed.ItemType,
+                    IsStackable = refreshed.IsStackable,
+                    MaxStack = refreshed.MaxStack,
+                    Name = refreshed.Name
+                };
+
+                bool inserted = _repo.AddItemDirectly(newItem);
+                if (!inserted) return;
+
+                _repo.ConsumeItem(refreshed.InstanceID, amountToMove);
+            }
+        }
+    }
+}

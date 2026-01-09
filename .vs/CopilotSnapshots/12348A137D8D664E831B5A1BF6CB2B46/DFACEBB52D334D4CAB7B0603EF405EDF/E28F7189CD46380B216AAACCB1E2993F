@@ -1,0 +1,41 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Drawing;
+
+namespace rpg_deneme.Models
+{
+    // Düşman ve Oyuncu bu sınıftan türeyecek
+    public class BattleEntity
+    {
+        public float X { get; set; }
+        public float Y { get; set; }
+        public int Width { get; set; }
+        public int Height { get; set; }
+        public float Speed { get; set; }
+        public int CurrentHP { get; set; }
+        public int MaxHP { get; set; }
+        public string Name { get; set; }
+
+        // StatManager entegrasyonu için hasar verisi
+        public int Damage { get; set; }
+        public int Defense { get; set; }
+
+        // Çarpışma Kutusu (Collision)
+        public Rectangle Bounds
+        {
+            get { return new Rectangle((int)X, (int)Y, Width, Height); }
+        }
+
+        // Merkez Noktası (Mermi ateşlemek için lazım)
+        public Point Center
+        {
+            get { return new Point((int)(X + Width / 2), (int)(Y + Height / 2)); }
+        }
+
+        public bool IsRanged { get; set; } = false;
+        public int AttackRange { get; set; } = 50;
+    }
+}

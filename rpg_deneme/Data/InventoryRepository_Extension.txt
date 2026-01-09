@@ -1,0 +1,46 @@
+
+	public List<ItemAttribute> GetAttributes(long instanceId)
+	{
+		List<ItemAttribute> attrs = new List<ItemAttribute>();
+		using (SqliteConnection conn = DatabaseHelper.GetConnection())
+		{
+			string sql = "SELECT AttributeID, InstanceID, AttrType, AttrValue FROM ItemAttributes WHERE InstanceID = @id";
+			using SqliteCommand cmd = new SqliteCommand(sql, conn);
+			cmd.Parameters.AddWithValue("@id", instanceId);
+			conn.Open();
+			using SqliteDataReader dr = cmd.ExecuteReader();
+			while (dr.Read())
+			{
+				attrs.Add(new ItemAttribute
+				{
+					AttributeID = Convert.ToInt64(dr["AttributeID"]),
+					InstanceID = Convert.ToInt64(dr["InstanceID"]),
+					AttributeType = (Enums.ItemAttributeType)Convert.ToByte(dr["AttrType"]),
+					Value = Convert.ToInt32(dr["AttrValue"])
+				});
+			}
+		}
+		return attrs;
+	}
+
+	public void AddAttribute(long instanceId, ItemAttribute attr)
+	{
+		using SqliteConnection conn = DatabaseHelper.GetConnection();
+		string sql = "INSERT INTO ItemAttributes (InstanceID, AttrType, AttrValue) VALUES (@iid, @type, @val)";
+		using SqliteCommand cmd = new SqliteCommand(sql, conn);
+		cmd.Parameters.AddWithValue("@iid", instanceId);
+		cmd.Parameters.AddWithValue("@type", (byte)attr.AttributeType);
+		cmd.Parameters.AddWithValue("@val", attr.Value);
+		conn.Open();
+		cmd.ExecuteNonQuery();
+	}
+
+	public void ClearAttributes(long instanceId)
+	{
+		using SqliteConnection conn = DatabaseHelper.GetConnection();
+		string sql = "DELETE FROM ItemAttributes WHERE InstanceID = @iid";
+		using SqliteCommand cmd = new SqliteCommand(sql, conn);
+		cmd.Parameters.AddWithValue("@iid", instanceId);
+		conn.Open();
+		cmd.ExecuteNonQuery();
+	}

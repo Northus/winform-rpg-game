@@ -1,0 +1,368 @@
+﻿using rpg_deneme.Models;
+using rpg_deneme.UI.Controls;
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using rpg_deneme.Business; // Manager için
+
+namespace rpg_deneme.UI.Windows
+{
+    // UserControl yerine GameWindow'dan türettik!
+    public partial class UcInventory : rpg_deneme.UI.Controls.GameWindow
+    {
+        // Envanterdeki tüm slotların listesi (Erişim kolaylığı için)
+        public List<UcItemSlot> Slots { get; private set; } = new List<UcItemSlot>();
+        private const int SLOT_COUNT = 40; // Toplam kapasite
+        private ConsumableManager _consumableManager = new ConsumableManager();
+
+        private UcItemSlot slotWeapon;
+        private UcItemSlot slotArmor;
+        private EquipmentManager _equipManager = new EquipmentManager();
+
+        // Market modu aktif mi? FormMain set edecek.
+        public bool IsMerchantMode { get; set; } = false;
+
+        // Satış istendiğinde (Sağ tık)
+        public event EventHandler<ItemInstance> OnSellRequest;
+
+        private Label lblGold;
+
+        public UcInventory()
+        {
+            InitializeComponent();
+            this.Title = "ENVANTER";
+            GenerateSlots();
+            SetupGoldLabel();
+        }
+
+        private InventoryManager _manager = new InventoryManager();
+
+        private void SetupGoldLabel()
+        {
+            lblGold = new Label
+            {
+                Text = "0 G",
+                ForeColor = Color.Gold,
+                BackColor = Color.Transparent,
+                Font = new Font("Segoe UI", 12, FontStyle.Bold), // Biraz daha büyük
+                AutoSize = true,
+                // Anchor Önemli: Sağ Üst köşeye yapışık kalsın
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
+            };
+
+            this.Controls.Add(lblGold);
+            lblGold.BringToFront();
+            UpdateGoldLabel(); // İlk konumu ayarla
+        }
+        public void UpdateGoldLabel()
+        {
+            var player = Core.SessionManager.CurrentCharacter;
+            if (player == null || lblGold == null) return;
+
+            // Metni güncelle (Binlik ayracı ile: 1.000 G)
+            lblGold.Text = $"{player.Gold:N0} G";
+
+            // Metin değiştikçe genişlik değişir, bu yüzden konumu tekrar hesapla:
+            // Pencere Genişliği - Label Genişliği - Biraz Boşluk (50px)
+            int x = this.Width - lblGold.Width - 50;
+            lblGold.Location = new Point(x, 8); // Y: 8px yukarıdan
+        }
+
+        private void GenerateSlots()
+        {
+            Panel pnlEquip = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 100, // Yükseklik
+                BackColor = Color.FromArgb(40, 40, 40)
+            };
+
+            // SİLAH SLOTU
+            slotWeapon = new UcItemSlot((int)Core.Enums.EquipmentSlot.Weapon);
+            slotWeapon.AcceptedType = Core.Enums.ItemType.Weapon; // Sadece Silah
+            slotWeapon.Location = new Point(20, 30); // Konum
+            slotWeapon.OnItemDropped += EquipmentSlot_OnItemDropped; // Olayı bağla
+            slotWeapon.MouseUp += Slot_MouseUp;
+            // Görsel ipucu ekleyelim (Boşken kılıç silüeti vs. olabilir)
+
+            // ZIRH SLOTU
+            slotArmor = new UcItemSlot((int)Core.Enums.EquipmentSlot.Armor);
+            slotArmor.AcceptedType = Core.Enums.ItemType.Armor; // Sadece Zırh
+            slotArmor.Location = new Point(80, 30);
+            slotArmor.OnItemDropped += EquipmentSlot_OnItemDropped;
+            slotArmor.MouseUp += Slot_MouseUp;
+
+            pnlEquip.Controls.Add(slotWeapon);
+            pnlEquip.Controls.Add(slotArmor);
+            this.Controls.Add(pnlEquip);
+
+            pnlGrid.Controls.Clear();
+            Slots.Clear();
+            for (int i = 0; i < SLOT_COUNT; i++)
+            {
+                UcItemSlot slot = new UcItemSlot(i);
+
+                // !!! OLAYI DİNLİYORUZ !!!
+                slot.OnItemDropped += Slot_OnItemDropped;
+                slot.MouseUp += Slot_MouseUp;
+                pnlGrid.Controls.Add(slot);
+                Slots.Add(slot);
+            }
+        }
+
+        /// <summary>
+        /// Veritabanından gelen eşya listesini slotlara dağıtır.
+        /// </summary>
+        public void LoadItems(List<ItemInstance> items)
+        {
+            // 1. Önce Envanter Izgarasını Temizle
+            foreach (var slot in Slots) slot.SetItem(null);
+
+            // 2. Ekipman Slotlarını da Temizle (Eski resimler kalmasın)
+            slotWeapon.SetItem(null);
+            slotArmor.SetItem(null);
+
+            // 3. Gelen eşyaları dağıt
+            foreach (var item in items)
+            {
+                // --- DURUM A: ENVANTERDEKİLER ---
+                if (item.Location == Core.Enums.ItemLocation.Inventory)
+                {
+                    if (item.SlotIndex < SLOT_COUNT)
+                    {
+                        Slots[item.SlotIndex].SetItem(item);
+                    }
+                }
+                // --- DURUM B: KUŞANILANLAR (EKİPMAN) ---
+                else if (item.Location == Core.Enums.ItemLocation.Equipment)
+                {
+                    // Hangi slotta takılı olduğuna bakıp doğru kutuya koyuyoruz
+                    if (item.SlotIndex == (int)Core.Enums.EquipmentSlot.Weapon)
+                    {
+                        slotWeapon.SetItem(item);
+                    }
+                    else if (item.SlotIndex == (int)Core.Enums.EquipmentSlot.Armor)
+                    {
+                        slotArmor.SetItem(item);
+                    }
+                }
+            }
+            UpdateGoldLabel();
+        }
+        // BİR EŞYA SÜRÜKLENİP BIRAKILDIĞINDA BU ÇALIŞACAK
+        private void Slot_OnItemDropped(object sender, ItemInstance droppedItem)
+        {
+            UcItemSlot targetSlot = (UcItemSlot)sender;
+
+            // Kaynak ve Hedef aynıysa işlem yapma
+            if (targetSlot.SlotIndex == droppedItem.SlotIndex && droppedItem.Location == Core.Enums.ItemLocation.Inventory) return;
+
+            // Ekipman -> Envanter durumu (Mevcut kodun)
+            if (droppedItem.Location == Core.Enums.ItemLocation.Equipment)
+            {
+                _manager.MoveItemToSlotAndLocation(droppedItem.InstanceID, Core.Enums.ItemLocation.Inventory, targetSlot.SlotIndex);
+                ReloadInventory();
+                NotifyStatUpdate();
+                return;
+            }
+
+            // --- SENARYO 1: HEDEF BOŞ (TAŞIMA) ---
+            if (targetSlot.Item == null)
+            {
+                _manager.MoveItemToSlot(droppedItem.InstanceID, targetSlot.SlotIndex);
+                ReloadInventory();
+            }
+            // --- SENARYO 2: HEDEF DOLU ---
+            else
+            {
+                ItemInstance targetItem = targetSlot.Item;
+
+                // A. EŞYALAR AYNI MI? (BİRLEŞTİRME / MERGE)
+                if (droppedItem.TemplateID == targetItem.TemplateID && targetItem.IsStackable)
+                {
+                    // Kapasite kontrolü
+                    if (targetItem.Count < targetItem.MaxStack)
+                    {
+                        // Birleştirme Mantığını Çağır
+                        bool merged = _manager.MergeItems(droppedItem, targetItem);
+                        if (merged)
+                        {
+                            ReloadInventory();
+                            return;
+                        }
+                    }
+                }
+
+                // B. EŞYALAR FARKLIYSA (SWAP / YER DEĞİŞTİRME)
+                // (Eğer merge olmadıysa veya farklı itemse yer değiştirirler)
+                _manager.MoveItemToSlot(targetItem.InstanceID, droppedItem.SlotIndex);
+                _manager.MoveItemToSlot(droppedItem.InstanceID, targetSlot.SlotIndex);
+                ReloadInventory();
+            }
+        }
+        private void Slot_MouseUp(object sender, MouseEventArgs e)
+        {
+            UcItemSlot slot = (UcItemSlot)sender;
+            if (slot.Item == null) return;
+
+            // --- BÖLME İŞLEMİ (CTRL + SOL TIK) ---
+            if (e.Button == MouseButtons.Left && ModifierKeys == Keys.Control)
+            {
+                // 1. Stacklenebilir mi ve 1'den fazla mı?
+                if (slot.Item.IsStackable && slot.Item.Count > 1)
+                {
+                    // Dialog aç
+                    using (var qd = new QuantityDialog(slot.Item.Count - 1)) // Kendisi hariç max
+                    {
+                        // Varsayılan değer 1 olsun
+                        // (QuantityDialog constructor'ında Value = 1 yapmalısın)
+                        if (qd.ShowDialog() == DialogResult.OK)
+                        {
+                            int amount = qd.SelectedQuantity;
+                            var result = _manager.SplitItem(slot.Item, amount);
+
+                            if (result.Success)
+                            {
+                                ReloadInventory();
+                                NotifyStatUpdate(); // Ağırlık vs değişirse diye
+                            }
+                            else
+                            {
+                                MessageBox.Show(result.Message);
+                            }
+                        }
+                    }
+                    return; // İşlemi kes, sürükleme yapmasın
+                }
+            }
+
+            // SADECE SAĞ TIK
+            if (e.Button == MouseButtons.Right)
+            {
+                if (IsMerchantMode && slot.Item.Location == Core.Enums.ItemLocation.Inventory)
+                {
+                    // Markete satılacak
+                    OnSellRequest?.Invoke(this, slot.Item);
+                    return; // İşlemi kes, giymeye çalışmasın
+                }
+                // --- SENARYO 1: EŞYA ÇANTADAYSA (ENVANTER -> EKİPMAN) ---
+                if (slot.Item.Location == Core.Enums.ItemLocation.Inventory)
+                {
+                    // A. Tüketilebilir Eşya mı? (Pot, Yemek)
+                    if (slot.Item.ItemType == Core.Enums.ItemType.Consumable)
+                    {
+                        var result = _consumableManager.UseItem(Core.SessionManager.CurrentCharacter, slot.Item);
+                        if (result.Success)
+                        {
+                            ReloadInventory();
+                            NotifyStatUpdate();
+                        }
+                        else
+                        {
+                            MessageBox.Show(result.Message);
+                        }
+                    }
+                    // B. Ekipman mı? (Silah, Zırh)
+                    else if (slot.Item.ItemType == Core.Enums.ItemType.Weapon ||
+                             slot.Item.ItemType == Core.Enums.ItemType.Armor)
+                    {
+                        // 1. Bu eşya hangi slota gitmeli? (Örn: Silah -> 0)
+                        int targetSlotIndex = _equipManager.GetTargetEquipmentSlot(slot.Item.ItemType);
+
+                        if (targetSlotIndex != -1)
+                        {
+                            // 2. O slotta şu an başka bir eşya var mı? (Swap mantığı gerekir mi?)
+                            // Basit başlangıç için: Direkt EquipItem çağırıyoruz. 
+                            // (Eğer o slot doluysa EquipItem metodunda "Swap" mantığını ileride kurabiliriz, 
+                            // şimdilik sadece boşsa takar veya üstüne yazar, dikkatli olalım.)
+
+                            var result = _equipManager.EquipItem(slot.Item, targetSlotIndex);
+
+                            if (result.Success)
+                            {
+                                ReloadInventory();
+                                NotifyStatUpdate();
+                                if (this.ParentForm is FormMain main)
+                                {
+                                    main.RefreshStats(); // Bu metot UpdateBars() çağırıyor, o yüzden bar düzelir.
+                                }
+                            }
+                            else
+                            {
+                                MessageBox.Show(result.Message);
+                            }
+                        }
+                    }
+                }
+                // --- SENARYO 2: EŞYA ZATEN TAKILIYSA (EKİPMAN -> ENVANTER) ---
+                else if (slot.Item.Location == Core.Enums.ItemLocation.Equipment)
+                {
+                    // Üzerimden çıkar
+                    var result = _equipManager.UnequipItem(slot.Item);
+
+                    if (result.Success)
+                    {
+                        ReloadInventory();
+                        NotifyStatUpdate();
+                    }
+                    else
+                    {
+                        MessageBox.Show(result.Message);
+                    }
+                }
+            }
+        }
+        // 1. Ekipman Slotuna Eşya Bırakıldığında (Inventory -> Equip)
+        private void EquipmentSlot_OnItemDropped(object sender, ItemInstance droppedItem)
+        {
+            UcItemSlot targetSlot = (UcItemSlot)sender;
+
+            // Eğer zaten takılıysa işlem yapma
+            if (droppedItem.Location == Core.Enums.ItemLocation.Equipment && droppedItem.SlotIndex == targetSlot.SlotIndex)
+                return;
+
+            // Kuşanma işlemini yap
+            var result = _equipManager.EquipItem(droppedItem, targetSlot.SlotIndex);
+
+            if (result.Success)
+            {
+                ReloadInventory(); // Ekranı yenile
+                NotifyStatUpdate(); // STATLARI GÜNCELLE
+                if (this.ParentForm is FormMain main)
+                {
+                    // Ana formdaki statları ve barları yenile
+                    main.RefreshStats();
+                }
+            }
+            else
+            {
+                MessageBox.Show(result.Message);
+            }
+        }
+
+        // FormMain'e haber ver: "Statlar değişti, yeniden hesapla!"
+        private void NotifyStatUpdate()
+        {
+            // FormMain'e ulaşmanın en kolay yolu (Eğer Parent FormMain ise):
+            if (this.ParentForm is FormMain mainForm)
+            {
+                mainForm.RefreshStats(); // FormMain içinde bu metodu tanımlayacağız
+            }
+        }
+
+        // Yardımcı Metot: Mevcut eşyaları tekrar DB'den çekip dizer
+        public void ReloadInventory()
+        {
+            // droppedItem içindeki OwnerID'yi kullanabiliriz ama
+            // SessionManager'dan almak daha garanti.
+            var items = _manager.GetInventory(Core.SessionManager.CurrentCharacter.CharacterID);
+            LoadItems(items);
+        }
+    }
+}

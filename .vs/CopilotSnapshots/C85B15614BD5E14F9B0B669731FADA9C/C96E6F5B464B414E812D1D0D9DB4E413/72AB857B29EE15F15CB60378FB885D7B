@@ -1,0 +1,95 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using rpg_deneme.Data;
+using rpg_deneme.Models;
+using rpg_deneme.Core;
+
+namespace rpg_deneme.Business
+{
+    public class EquipmentManager
+    {
+        private readonly InventoryRepository _repo = new InventoryRepository();
+
+        // Eşyayı Kuşan (Inventory -> Equipment)
+        public (bool Success, string Message) EquipItem(ItemInstance newItem, int targetSlotIndex)
+        {
+            // Yeni: slot tipi uygun mu?
+            if (!IsValidSlot(newItem.ItemType, targetSlotIndex))
+            {
+                return (false, "Bu slot için uygun bir eşya değil.");
+            }
+
+            // Yeni: template izin veriyor mu (sınıf kontrolü)
+            var templateInfo = _repo.GetTemplateInfo(newItem.TemplateID);
+            byte? allowedClass = templateInfo.AllowedClass;
+            var currentChar = Core.SessionManager.CurrentCharacter;
+            if (allowedClass.HasValue && allowedClass.Value !=0)
+            {
+                if (currentChar == null || currentChar.Class != allowedClass.Value)
+                {
+                    return (false, "Bu sınıf bu eşyayı kuşanamaz.");
+                }
+            }
+
+            //1. Hedef Slot (Kuşanılacak yer) Dolu mu?
+            ItemInstance oldItem = _repo.GetItemAt(newItem.OwnerID, Enums.ItemLocation.Equipment, targetSlotIndex);
+
+            if (oldItem != null)
+            {
+                // --- SWAP (YER DEĞİŞTİRME) İŞLEMİ ---
+                // Üzerimizdeki eski eşyayı, yeni eşyanın geldiği çantadaki yere (SlotIndex) gönderiyoruz.
+                _repo.MoveItemLocation(oldItem.InstanceID, Enums.ItemLocation.Inventory, newItem.SlotIndex);
+
+                // Yeni eşyayı da kuşanalım
+                _repo.MoveItemLocation(newItem.InstanceID, Enums.ItemLocation.Equipment, targetSlotIndex);
+
+                return (true, "Eşyalar değiştirildi.");
+            }
+            else
+            {
+                // --- DİREKT KUŞANMA ---
+                // Hedef boşsa direkt taşı
+                bool moved = _repo.MoveItemLocation(newItem.InstanceID, Enums.ItemLocation.Equipment, targetSlotIndex);
+                return moved ? (true, "Kuşanıldı") : (false, "Hata oluştu");
+            }
+        }
+
+        // Hangi eşya hangi slota gider?
+        private bool IsValidSlot(Enums.ItemType type, int slotIndex)
+        {
+            if (type == Enums.ItemType.Weapon && slotIndex == (int)Enums.EquipmentSlot.Weapon) return true;
+            if (type == Enums.ItemType.Armor && slotIndex == (int)Enums.EquipmentSlot.Armor) return true;
+            // Kask, bot vs. eklenecek
+            return false;
+        }
+        public (bool Success, string Message) UnequipItem(ItemInstance item)
+        {
+            //1. Envanterde boş yer var mı?
+            int emptySlot = _repo.FindFirstEmptyInventorySlot(item.OwnerID);
+
+            if (emptySlot == -1)
+                return (false, "Çantan dolu! Eşyayı çıkaramazsın.");
+
+            // 2. Eşyayı o boş slota taşı
+            bool result = _repo.MoveItemLocation(item.InstanceID, Enums.ItemLocation.Inventory, emptySlot);
+
+            return result ? (true, "Eşya çıkarıldı.") : (false, "Bir hata oluştu.");
+        }
+        public int GetTargetEquipmentSlot(Enums.ItemType type)
+        {
+            switch (type)
+            {
+                case Enums.ItemType.Weapon:
+                    return (int)Enums.EquipmentSlot.Weapon; // 0
+                case Enums.ItemType.Armor:
+                    return (int)Enums.EquipmentSlot.Armor;  // 1
+                                                            // Kask, Ayakkabı vs. eklendikçe buraya yazacaksın
+                default:
+                    return -1; // Ekipman değil
+            }
+        }
+    }
+}

@@ -1,0 +1,115 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Numerics;
+using System.Runtime.CompilerServices;
+using rpg_deneme.Models;
+
+namespace rpg_deneme.UI.Controls;
+
+internal sealed class EnemySpatialGrid
+{
+    // Uniform grid for neighbor queries (reduces O(n^2) separation checks)
+    // Use array-backed storage to avoid Dictionary overhead
+    private readonly Dictionary<long, int> _cellStart = new();
+    private readonly List<int> _cellIndices = new(64);
+    private readonly List<long> _occupiedKeys = new(32);
+    private float _cellSize;
+    private IReadOnlyList<BattleEntity> _currentEnemies;
+
+    public void Build(IReadOnlyList<BattleEntity> enemies, float cellSize)
+    {
+     _cellSize = Math.Max(1f, cellSize);
+        _cellStart.Clear();
+    _cellIndices.Clear();
+        _occupiedKeys.Clear();
+        _currentEnemies = enemies;
+
+        int count = enemies.Count;
+  if (count == 0) return;
+
+        // First pass: count entities per cell
+        var cellCounts = new Dictionary<long, int>(count / 4 + 1);
+        for (int i = 0; i < count; i++)
+        {
+            var e = enemies[i];
+        if (e.CurrentHP <= 0) continue;
+          long key = Key(Cell(e.X + e.Width / 2f), Cell(e.Y + e.Height / 2f));
+    cellCounts.TryGetValue(key, out int c);
+      cellCounts[key] = c + 1;
+        }
+
+    // Allocate space
+        int totalEntries = 0;
+        foreach (var kvp in cellCounts)
+        {
+   _cellStart[kvp.Key] = totalEntries;
+      _occupiedKeys.Add(kvp.Key);
+            totalEntries += kvp.Value;
+        }
+
+        // Ensure list has capacity
+        for (int i = 0; i < totalEntries; i++)
+         _cellIndices.Add(-1);
+
+        // Second pass: fill indices
+      var cellOffsets = new Dictionary<long, int>(cellCounts.Count);
+        foreach (var key in _occupiedKeys)
+            cellOffsets[key] = 0;
+
+        for (int i = 0; i < count; i++)
+        {
+     var e = enemies[i];
+       if (e.CurrentHP <= 0) continue;
+  long key = Key(Cell(e.X + e.Width / 2f), Cell(e.Y + e.Height / 2f));
+            int start = _cellStart[key];
+            int offset = cellOffsets[key];
+   _cellIndices[start + offset] = i;
+    cellOffsets[key] = offset + 1;
+ }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+  public void ForEachNeighborIndex(float x, float y, Action<int> visitor)
+    {
+   int cx = Cell(x);
+        int cy = Cell(y);
+
+     for (int dy = -1; dy <= 1; dy++)
+     {
+       for (int dx = -1; dx <= 1; dx++)
+ {
+        long key = Key(cx + dx, cy + dy);
+    if (!_cellStart.TryGetValue(key, out int start)) continue;
+     
+       // Find end by looking at next cell or end of list
+            int end = FindCellEnd(key, start);
+   
+          for (int i = start; i < end; i++)
+       {
+         int idx = _cellIndices[i];
+       if idx >= 0) visitor(idx);
+         }
+ }
+    }
+    }
+
+    private int FindCellEnd(long key, int start)
+    {
+   // Find the count for this cell by scanning until we hit -1 or end
+     int end = start;
+        int maxEnd = _cellIndices.Count;
+        while (end < maxEnd && _cellIndices[end] >= 0)
+   end++;
+        return end;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private int Cell(float v) => (int)MathF.Floor(v / _cellSize);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static long Key(int x, int y)
+    {
+        // pack two ints into one long (stable hash)
+        return ((long)x << 32) ^ (uint)y;
+    }
+}

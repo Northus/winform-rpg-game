@@ -1,0 +1,191 @@
+﻿using System;
+using System.Drawing;
+using System.Linq;
+using System.Windows.Forms;
+using System.Threading.Tasks;
+using rpg_deneme.Business;
+using rpg_deneme.Core;
+using rpg_deneme.Models;
+using rpg_deneme.UI.Controls;
+using rpg_deneme.Data;
+
+namespace rpg_deneme.UI.Windows
+{
+    public partial class UcBlacksmith : GameWindow
+    {
+        // 4 Slot
+        private UcItemSlot slotMain;     // 0: Ekipman
+        private UcItemSlot slotMaterial; // 1: Demir
+        private UcItemSlot slotLucky;    // 2: Şans
+        private UcItemSlot slotResult;   // 3: Sonuç
+
+        private Button btnUpgrade;
+        private Label lblInfo;
+        private Label lblChance;
+
+        private UpgradeManager _upgManager = new UpgradeManager();
+        private InventoryManager _invManager = new InventoryManager();
+        private InventoryRepository _repo = new InventoryRepository();
+
+        // list of slots for hit testing
+        private readonly System.Collections.Generic.List<UcItemSlot> _slots = new System.Collections.Generic.List<UcItemSlot>();
+
+        // track attached parent form to listen for application/form closing
+        private Form _attachedParentForm;
+
+        public UcBlacksmith()
+        {
+            this.Title = "DEMİRCİ";
+            this.Size = new Size(360, 320);
+            SetupUI();
+        }
+
+        protected override void OnParentChanged(EventArgs e)
+        {
+            base.OnParentChanged(e);
+
+            // detach from previous parent
+            if (_attachedParentForm != null)
+            {
+                _attachedParentForm.FormClosing -= ParentForm_FormClosing;
+                _attachedParentForm = null;
+            }
+
+            // attach to new parent so we can flush on app/form close
+            if (this.ParentForm != null)
+            {
+                _attachedParentForm = this.ParentForm;
+                _attachedParentForm.FormClosing += ParentForm_FormClosing;
+            }
+        }
+
+        // Ensure when window is closed via GameWindow.CloseWindow (ESC or header close) we flush
+        protected override bool OnClosing()
+        {
+            // Move any remaining items back to inventory
+            try
+            {
+                FlushSlotsToInventory();
+            }
+            catch
+            {
+                // ignore errors during closing
+            }
+            return true; // allow close/hide
+        }
+
+        private void ParentForm_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            // flush on application/form exit as well
+            try
+            {
+                FlushSlotsToInventory();
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        // Dışarıdan veya FormMain'den çağrılabilir: Slotlardaki eşyaların durumunu tazeler
+        public void RefreshFromDb()
+        {
+            ReloadSlotItem(slotMain);
+            ReloadSlotItem(slotMaterial);
+            ReloadSlotItem(slotLucky);
+            ReloadSlotItem(slotResult);
+            UpdateInfo();
+        }
+
+        // Tek bir slotu veritabanından InstanceID ile kontrol edip günceller
+        private void ReloadSlotItem(UcItemSlot slot)
+        {
+            if (slot == null || slot.Item == null) return;
+
+            var hero = Core.SessionManager.CurrentCharacter;
+            if (hero == null) return;
+
+            var freshItem = _repo.GetItemAt(hero.CharacterID, Enums.ItemLocation.Storage, slot.Item.SlotIndex);
+
+            if (freshItem != null && freshItem.InstanceID == slot.Item.InstanceID)
+            {
+                // Eşya hala depoda ve aynı instance, güncelle
+                slot.SetItem(freshItem);
+            }
+            else
+            {
+                // Eşya bulunamadı veya taşındı (Tükendi, satıldı veya envantere çekildi)
+                slot.SetItem(null);
+            }
+        }
+
+        private void SetupUI()
+        {
+            int startX = 30;
+            int startY = 60;
+            int gap = 80;
+
+            // make the whole control accept drops as a fallback
+            this.AllowDrop = true;
+            this.DragEnter += UcBlacksmith_DragEnter;
+            this.DragDrop += UcBlacksmith_DragDrop;
+
+            // 1. Slot: Ekipman
+            slotMain = CreateSlot(0, startX, startY, "EKİPMAN");
+
+            // 2. Slot: Malzeme
+            slotMaterial = CreateSlot(1, startX + gap, startY, "MALZEME");
+
+            // 3. Slot: Şans
+            slotLucky = CreateSlot(2, startX + gap * 2, startY, "ŞANS");
+
+            Label lblArrow = new Label
+            {
+                Text = "▼",
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI", 16, FontStyle.Bold),
+                AutoSize = true,
+                Location = new Point(startX + gap - 10, startY + 60)
+            };
+            this.Controls.Add(lblArrow);
+
+            // 4. Slot: Sonuç
+            slotResult = CreateSlot(3, startX + gap - 10, startY + 100, "SONUÇ");
+            slotResult.BackColor = Color.FromArgb(60, 70, 60); // Yeşilimsi ton
+
+            // Bilgi Labelleri
+            lblInfo = new Label
+            {
+                Text = "Gerekli: -",
+                ForeColor = Color.Silver,
+                Location = new Point(20, 230),
+                AutoSize = true
+            };
+            this.Controls.Add(lblInfo);
+
+            lblChance = new Label
+            {
+                Text = "Şans: -",
+                ForeColor = Color.Gold,
+                Location = new Point(200, 230),
+                AutoSize = true,
+                Font = new Font("Segoe UI", 10, FontStyle.Bold)
+            };
+            this.Controls.Add(lblChance);
+
+            // Yükselt Butonu
+            btnUpgrade = new Button
+            {
+                Text = "YÜKSELT",
+                Size = new Size(100, 35),
+                Location = new Point(120, 260),
+                BackColor = Color.DarkRed,
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Cursor = Cursors.Hand
+            };
+            btnUpgrade.Click += BtnUpgrade_Click;
+            this.Controls.Add(btnUpgrade);
+        }
+
+        private UcItemSlot CreateSlot(int index, int x, int y, strin

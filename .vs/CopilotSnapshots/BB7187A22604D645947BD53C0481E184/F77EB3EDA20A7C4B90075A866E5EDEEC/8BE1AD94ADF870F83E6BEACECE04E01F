@@ -1,0 +1,430 @@
+﻿using System;
+using System.Collections.Generic;
+using Microsoft.Data.Sqlite;
+using System.Linq;
+using rpg_deneme.Core;
+using rpg_deneme.Models;
+using static rpg_deneme.Core.Enums;
+
+namespace rpg_deneme.Data
+{
+    // Veritabanından dönecek basit veri taşıyıcı
+    public class ZoneProgressDTO
+    {
+        public int ProgressEasy { get; set; }
+        public int ProgressNormal { get; set; }
+        public int ProgressHard { get; set; }
+        // New flags persisted in CharacterZoneData when DB schema updated
+        public bool BossKilledEasy { get; set; }
+        public bool BossKilledNormal { get; set; }
+        public bool BossKilledHard { get; set; }
+    }
+
+    public class ZoneRepository
+    {
+        // Get all zones from DB
+        public List<ZoneModel> GetZones()
+        {
+            var list = new List<ZoneModel>();
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                conn.Open();
+                string sql = "SELECT ZoneID, Name, Description, MinLevel, OrderIndex FROM Zones ORDER BY OrderIndex";
+                using (var cmd = new SqliteCommand(sql, conn))
+                using (var dr = cmd.ExecuteReader())
+                {
+                    while (dr.Read())
+                    {
+                        list.Add(new ZoneModel
+                        {
+                            ZoneID = Convert.ToInt32(dr["ZoneID"]),
+                            Name = dr["Name"]?.ToString(),
+                            Description = dr["Description"]?.ToString(),
+                            MinLevel = dr["MinLevel"] != DBNull.Value ? Convert.ToInt32(dr["MinLevel"]) :1,
+                            OrderIndex = dr["OrderIndex"] != DBNull.Value ? Convert.ToInt32(dr["OrderIndex"]) :0
+                        });
+                    }
+                }
+            }
+            return list;
+        }
+
+        // Choose a random enemy template for a zone (non-boss) using ZoneEnemies spawn rates
+        public EnemyModel GetRandomEnemy(int zoneId)
+        {
+            var candidates = new List<(int EnemyID, int SpawnRate)>();
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                conn.Open();
+                string sql = @"
+ SELECT Z.EnemyID, Z.SpawnRate
+ FROM ZoneEnemies Z
+ INNER JOIN Enemies E ON Z.EnemyID = E.EnemyID
+ WHERE Z.ZoneID = @zid AND (E.IsBoss =0 OR E.IsBoss IS NULL)";
+                using (var cmd = new SqliteCommand(sql, conn))
+                {
+                    cmd.Parameters.AddWithValue("@zid", zoneId);
+                    using (var dr = cmd.ExecuteReader())
+                    {
+                        while (dr.Read())
+                        {
+                            candidates.Add((Convert.ToInt32(dr["EnemyID"]), dr["SpawnRate"] != DBNull.Value ? Convert.ToInt32(dr["SpawnRate"]) :1));
+                        }
+                    }
+                }
+            }
+
+            if (candidates.Count ==0)
+            {
+                // fallback: any non-boss enemy
+                return GetAnyNonBossEnemy();
+            }
+
+            // weighted random
+            int total = candidates.Sum(c => c.SpawnRate);
+            var rnd = new Random();
+            int pick = rnd.Next(0, Math.Max(1, total));
+            int acc =0;
+            int chosenId = candidates[0].EnemyID;
+            foreach (var c in candidates)
+            {
+                acc += c.SpawnRate;
+                if (pick < acc)
+                {
+                    chosenId = c.EnemyID;
+                    break;
+                }
+            }
+
+            return LoadEnemyById(chosenId);
+        }
+
+        // Get boss for zone (first boss enemy associated with zone)
+        public EnemyModel GetBossForZone(int zoneId)
+        {
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                conn.Open();
+                string sql = @"
+ SELECT e.* FROM Enemies e
+ INNER JOIN ZoneEnemies ze ON e.EnemyID = ze.EnemyID
+ WHERE ze.ZoneID = @zid AND e.IsBoss =1
+ ORDER BY ze.SpawnRate DESC
+ LIMIT1";
+
+                using (var cmd = new SqliteCommand(sql, conn))
+                {
+                    cmd.Parameters.AddWithValue("@zid", zoneId);
+
+                    using (var dr = cmd.ExecuteReader())
+                    {
+                        if (dr.Read())
+                        {
+                            string path = dr["SpritePath"] != DBNull.Value ? dr["SpritePath"].ToString().Trim() : "";
+                            var type = Core.Enums.EnemyType.Boss;
+                            if (path.ToUpperInvariant().Contains("RANGED")) type = Core.Enums.EnemyType.Ranged;
+
+                            return new EnemyModel
+                            {
+                                EnemyID = Convert.ToInt32(dr["EnemyID"]),
+                                Name = dr["Name"]?.ToString(),
+                                Level = dr["Level"] != DBNull.Value ? Convert.ToInt32(dr["Level"]) :1,
+                                MaxHP = dr["MaxHP"] != DBNull.Value ? Convert.ToInt32(dr["MaxHP"]) :100,
+                                CurrentHP = dr["MaxHP"] != DBNull.Value ? Convert.ToInt32(dr["MaxHP"]) :100,
+                                Damage = dr["Damage"] != DBNull.Value ? Convert.ToInt32(dr["Damage"]) :10,
+                                ExpReward = dr["ExpReward"] != DBNull.Value ? Convert.ToInt32(dr["ExpReward"]) :0,
+                                GoldReward = dr["GoldReward"] != DBNull.Value ? Convert.ToInt32(dr["GoldReward"]) :0,
+                                IsBoss = true,
+                                Type = type,
+                                SpritePath = path,
+                                Speed =3.5f,
+                                Width =60,
+                                Height =60
+                            };
+                        }
+                    }
+                }
+            }
+            return null; // Boss bulunamadı
+        }
+
+        // Returns list of enemies within level range (non-boss)
+        public List<EnemyModel> GetEnemiesByLevelRange(int minLvl, int maxLvl)
+        {
+            var list = new List<EnemyModel>();
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                conn.Open();
+                string sql = @"SELECT EnemyID FROM Enemies WHERE Level BETWEEN @min AND @max AND (IsBoss =0 OR IsBoss IS NULL)";
+                using (var cmd = new SqliteCommand(sql, conn))
+                {
+                    cmd.Parameters.AddWithValue("@min", minLvl);
+                    cmd.Parameters.AddWithValue("@max", maxLvl);
+                    using (var dr = cmd.ExecuteReader())
+                    {
+                        while (dr.Read())
+                        {
+                            list.Add(LoadEnemyById(Convert.ToInt32(dr["EnemyID"])));
+                        }
+                    }
+                }
+            }
+            return list;
+        }
+
+        // Helper: load full enemy data from Enemies table
+        private EnemyModel LoadEnemyById(int enemyId)
+        {
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                conn.Open();
+                string sql = @"SELECT EnemyID, Name, Level, MaxHP, Damage, ExpReward, GoldReward, SpritePath, IsBoss FROM Enemies WHERE EnemyID = @eid";
+                using (var cmd = new SqliteCommand(sql, conn))
+                {
+                    cmd.Parameters.AddWithValue("@eid", enemyId);
+                    using (var dr = cmd.ExecuteReader())
+                    {
+                        if (dr.Read())
+                        {
+                            var em = new EnemyModel();
+                            em.EnemyID = Convert.ToInt32(dr["EnemyID"]);
+                            em.Name = dr["Name"]?.ToString();
+                            em.Level = dr["Level"] != DBNull.Value ? Convert.ToInt32(dr["Level"]) :1;
+                            em.MaxHP = dr["MaxHP"] != DBNull.Value ? Convert.ToInt32(dr["MaxHP"]) :50;
+                            em.CurrentHP = em.MaxHP;
+                            em.Damage = dr["Damage"] != DBNull.Value ? Convert.ToInt32(dr["Damage"]) :5;
+                            em.ExpReward = dr["ExpReward"] != DBNull.Value ? Convert.ToInt32(dr["ExpReward"]) :0;
+                            em.GoldReward = dr["GoldReward"] != DBNull.Value ? Convert.ToInt32(dr["GoldReward"]) :0;
+                            em.SpritePath = dr["SpritePath"]?.ToString();
+                            em.IsBoss = dr["IsBoss"] != DBNull.Value && Convert.ToBoolean(dr["IsBoss"]);
+
+                            // DB doesn't store Type/IsRanged/Speed/Size/AttackRange; assign sensible defaults
+                            em.Type = em.IsBoss ? EnemyType.Boss : EnemyType.Melee;
+                            em.Speed =1.0f;
+                            em.Width =32;
+                            em.Height =32;
+                            em.IsRanged = false;
+                            em.AttackRange =50;
+
+                            // Heuristic: if name contains 'arch' or 'bow' treat as ranged
+                            if (!string.IsNullOrEmpty(em.Name))
+                            {
+                                string lower = em.Name.ToLowerInvariant();
+                                if (lower.Contains("arch") || lower.Contains("bow") || lower.Contains("ranged") || lower.Contains("shooter"))
+                                {
+                                    em.Type = EnemyType.Ranged;
+                                    em.IsRanged = true;
+                                    em.AttackRange =220;
+                                }
+                            }
+
+                            return em;
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+
+        private EnemyModel GetAnyNonBossEnemy()
+        {
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                conn.Open();
+                string sql = "SELECT EnemyID FROM Enemies WHERE IsBoss =0 OR IsBoss IS NULL LIMIT1";
+                using (var cmd = new SqliteCommand(sql, conn))
+                {
+                    var obj = cmd.ExecuteScalar();
+                    if (obj != null && obj != DBNull.Value)
+                    {
+                        return LoadEnemyById(Convert.ToInt32(obj));
+                    }
+                }
+            }
+            return null;
+        }
+
+        private EnemyModel GetAnyBossEnemy()
+        {
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                conn.Open();
+                string sql = "SELECT EnemyID FROM Enemies WHERE IsBoss =1 LIMIT1";
+                using (var cmd = new SqliteCommand(sql, conn))
+                {
+                    var obj = cmd.ExecuteScalar();
+                    if (obj != null && obj != DBNull.Value)
+                    {
+                        return LoadEnemyById(Convert.ToInt32(obj));
+                    }
+                }
+            }
+            return null;
+        }
+
+        private static bool ColumnExists(SqliteConnection conn, string tableName, string columnName)
+        {
+            // SQLite: PRAGMA table_info(table) contains column metadata
+            using var cmd = new SqliteCommand($"PRAGMA table_info({tableName});", conn);
+            using var dr = cmd.ExecuteReader();
+            while (dr.Read())
+            {
+                var name = dr["name"]?.ToString();
+                if (string.Equals(name, columnName, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
+        }
+
+        public ZoneProgressDTO GetZoneProgressData(int charId, int zoneId)
+        {
+            var result = new ZoneProgressDTO();
+
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                conn.Open();
+
+                // Build SELECT based on whether the BossKilled columns exist.
+                bool hasBossEasy = ColumnExists(conn, "CharacterZoneData", "BossKilledEasy");
+                bool hasBossNormal = ColumnExists(conn, "CharacterZoneData", "BossKilledNormal");
+                bool hasBossHard = ColumnExists(conn, "CharacterZoneData", "BossKilledHard");
+
+                // SQLite: use IFNULL instead of ISNULL
+                string sql = $@"SELECT ProgressEasy, ProgressNormal, ProgressHard,
+IFNULL({(hasBossEasy ? "BossKilledEasy" : "0")},0) AS BossKilledEasy,
+IFNULL({(hasBossNormal ? "BossKilledNormal" : "0")},0) AS BossKilledNormal,
+IFNULL({(hasBossHard ? "BossKilledHard" : "0")},0) AS BossKilledHard
+FROM CharacterZoneData WHERE CharacterID=@cid AND ZoneID=@zid";
+
+                using (var cmd = new SqliteCommand(sql, conn))
+                {
+                    cmd.Parameters.AddWithValue("@cid", charId);
+                    cmd.Parameters.AddWithValue("@zid", zoneId);
+                    using (var dr = cmd.ExecuteReader())
+                    {
+                        if (dr.Read())
+                        {
+                            result.ProgressEasy = dr["ProgressEasy"] != DBNull.Value ? Convert.ToInt32(dr["ProgressEasy"]) :0;
+                            result.ProgressNormal = dr["ProgressNormal"] != DBNull.Value ? Convert.ToInt32(dr["ProgressNormal"]) :0;
+                            result.ProgressHard = dr["ProgressHard"] != DBNull.Value ? Convert.ToInt32(dr["ProgressHard"]) :0;
+
+                            result.BossKilledEasy = dr["BossKilledEasy"] != DBNull.Value && Convert.ToInt32(dr["BossKilledEasy"]) !=0;
+                            result.BossKilledNormal = dr["BossKilledNormal"] != DBNull.Value && Convert.ToInt32(dr["BossKilledNormal"]) !=0;
+                            result.BossKilledHard = dr["BossKilledHard"] != DBNull.Value && Convert.ToInt32(dr["BossKilledHard"]) !=0;
+                        }
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        public void SaveZoneProgress(int charId, int zoneId, ZoneDifficulty diff, int newVal)
+        {
+            if (newVal >100) newVal =100;
+
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                conn.Open();
+                // Kayıt var mı?
+                string checkSql = "SELECT COUNT(*) FROM CharacterZoneData WHERE CharacterID=@cid AND ZoneID=@zid";
+                using var cmdCheck = new SqliteCommand(checkSql, conn);
+                cmdCheck.Parameters.AddWithValue("@cid", charId);
+                cmdCheck.Parameters.AddWithValue("@zid", zoneId);
+                long count = (long)cmdCheck.ExecuteScalar();
+
+                string colName = "ProgressEasy";
+                if (diff == ZoneDifficulty.Normal) colName = "ProgressNormal";
+                if (diff == ZoneDifficulty.Hard) colName = "ProgressHard";
+
+                if (count ==0)
+                {
+                    string insertSql = $"INSERT INTO CharacterZoneData (CharacterID, ZoneID, {colName}) VALUES (@cid, @zid, @val)";
+                    using var cmd = new SqliteCommand(insertSql, conn);
+                    cmd.Parameters.AddWithValue("@cid", charId);
+                    cmd.Parameters.AddWithValue("@zid", zoneId);
+                    cmd.Parameters.AddWithValue("@val", newVal);
+                    cmd.ExecuteNonQuery();
+                }
+                else
+                {
+                    string updateSql = $"UPDATE CharacterZoneData SET {colName}=@val WHERE CharacterID=@cid AND ZoneID=@zid";
+                    using var cmd = new SqliteCommand(updateSql, conn);
+                    cmd.Parameters.AddWithValue("@cid", charId);
+                    cmd.Parameters.AddWithValue("@zid", zoneId);
+                    cmd.Parameters.AddWithValue("@val", newVal);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+        // Persist whether boss was defeated for a character/zone/difficulty
+        public bool GetBossKilled(int charId, int zoneId, ZoneDifficulty diff)
+        {
+            var dto = GetZoneProgressData(charId, zoneId);
+            bool flag = diff == ZoneDifficulty.Easy ? dto.BossKilledEasy : diff == ZoneDifficulty.Normal ? dto.BossKilledNormal : dto.BossKilledHard;
+            if (flag) return true;
+
+            // legacy fallback: some older versions used99 as "boss killed" marker
+            int val = diff == ZoneDifficulty.Easy ? dto.ProgressEasy : diff == ZoneDifficulty.Normal ? dto.ProgressNormal : dto.ProgressHard;
+            return val ==99;
+        }
+
+        // Persist boss-killed flag on CharacterZoneData table (requires adding BossKilledEasy/Normal/Hard columns)
+        public void SetBossKilled(int charId, int zoneId, ZoneDifficulty diff, bool killed)
+        {
+            try
+            {
+                using (var conn = DatabaseHelper.GetConnection())
+                {
+                    conn.Open();
+
+                    string colName = diff == ZoneDifficulty.Easy ? "BossKilledEasy" : diff == ZoneDifficulty.Normal ? "BossKilledNormal" : "BossKilledHard";
+
+                    // Ensure the BossKilled column exists in the table; if not, add it (SQLite way)
+                    if (!ColumnExists(conn, "CharacterZoneData", colName))
+                    {
+                        using var cmdEnsure = new SqliteCommand($"ALTER TABLE CharacterZoneData ADD COLUMN {colName} INTEGER NOT NULL DEFAULT0;", conn);
+                        cmdEnsure.ExecuteNonQuery();
+                    }
+
+                    // Ensure row exists
+                    string checkSql = "SELECT COUNT(*) FROM CharacterZoneData WHERE CharacterID=@cid AND ZoneID=@zid";
+                    using (var cmdCheck = new SqliteCommand(checkSql, conn))
+                    {
+                        cmdCheck.Parameters.AddWithValue("@cid", charId);
+                        cmdCheck.Parameters.AddWithValue("@zid", zoneId);
+                        long count = (long)cmdCheck.ExecuteScalar();
+
+                        if (count ==0)
+                        {
+                            string insertSql = $"INSERT INTO CharacterZoneData (CharacterID, ZoneID, {colName}) VALUES (@cid, @zid, @val)";
+                            using var cmd = new SqliteCommand(insertSql, conn);
+                            cmd.Parameters.AddWithValue("@cid", charId);
+                            cmd.Parameters.AddWithValue("@zid", zoneId);
+                            cmd.Parameters.AddWithValue("@val", killed ?1 :0);
+                            cmd.ExecuteNonQuery();
+                        }
+                        else
+                        {
+                            string updateSql = $"UPDATE CharacterZoneData SET {colName}=@val WHERE CharacterID=@cid AND ZoneID=@zid";
+                            using var cmd = new SqliteCommand(updateSql, conn);
+                            cmd.Parameters.AddWithValue("@cid", charId);
+                            cmd.Parameters.AddWithValue("@zid", zoneId);
+                            cmd.Parameters.AddWithValue("@val", killed ?1 :0);
+                            cmd.ExecuteNonQuery();
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // fallback: legacy approach set progress to99 when killed
+                if (killed)
+                {
+                    SaveZoneProgress(charId, zoneId, diff,99);
+                }
+            }
+        }
+    }
+}

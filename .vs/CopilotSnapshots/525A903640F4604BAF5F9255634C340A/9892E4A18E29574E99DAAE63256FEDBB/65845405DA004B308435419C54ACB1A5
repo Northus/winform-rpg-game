@@ -1,0 +1,478 @@
+﻿using rpg_deneme.Business;
+using rpg_deneme.Core; // Enumlar için
+using rpg_deneme.Models;
+using rpg_deneme.UI.Controls;
+using System;
+using System.Collections.Generic; // List için
+using System.Drawing;
+using System.Linq;
+using System.Windows.Forms;
+using static rpg_deneme.Core.Enums;
+
+namespace rpg_deneme.UI.Windows
+{
+    public partial class UcExploration : UserControl
+    {
+        private ZoneModel _currentZone;
+
+        // UI Elemanları
+        private Label lblTitle;
+        private Label lblInfo;
+        private Button btnExplore;
+        private UcArena ucArena;
+        private Panel pnlInfo;
+        private ComboBox cmbDifficulty;
+        private Label lblDifficultyInfo;
+
+        // Managerlar
+        private ZoneManager _zoneManager = new ZoneManager();
+        private LootManager _lootManager = new LootManager();
+        private LevelManager _levelManager = new LevelManager();
+        private Data.CharacterRepository _charRepo = new Data.CharacterRepository();
+        // Not: _zoneRepo'yu kaldırdık, tüm işlemler _zoneManager üzerinden yapılacak.
+
+        public event EventHandler OnReturnRequested;
+        private Button btnBack;
+        public GameProgressBar pbZoneProgress { get; private set; }
+
+        private bool _isBossFight = false;
+        private bool _bossReadyToSpawn = false; // Progress 100% olduğunda boss çıkmaya hazır
+        private ZoneDifficulty _selectedDifficulty = ZoneDifficulty.Easy;
+        private List<int> _currentEnemyIDs = new List<int>(); // Çoklu loot için
+
+        public UcExploration(ZoneModel zone)
+        {
+            InitializeComponent(); // Designer varsa çalışır, yoksa hata vermez
+            _currentZone = zone;
+            this.Dock = DockStyle.Fill;
+            this.BackColor = Color.FromArgb(40, 40, 40);
+
+            SetupUI();
+        }
+
+        private void SetupUI()
+        {
+            this.Controls.Clear(); // Temiz başlangıç
+
+            pnlInfo = new Panel { Dock = DockStyle.Top, Height = 350, BackColor = Color.Transparent };
+
+            var hero = Core.SessionManager.CurrentCharacter;
+
+            lblTitle = new Label
+            {
+                Text = _currentZone.Name,
+                Font = new Font("Segoe UI", 24, FontStyle.Bold),
+                ForeColor = Color.White,
+                AutoSize = true,
+                Location = new Point(20, 20),
+                Parent = pnlInfo
+            };
+
+            lblInfo = new Label
+            {
+                Text = _currentZone.Description,
+                Font = new Font("Segoe UI", 12),
+                ForeColor = Color.LightGray,
+                AutoSize = true,
+                Location = new Point(20, 80),
+                Parent = pnlInfo
+            };
+
+            // --- Zorluk Seçimi UI ---
+            Label lblDiff = new Label { Text = "Zorluk:", ForeColor = Color.White, Location = new Point(20, 130), AutoSize = true, Parent = pnlInfo };
+
+            cmbDifficulty = new ComboBox
+            {
+                Location = new Point(80, 125),
+                Width = 200,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Parent = pnlInfo
+            };
+
+            // Olayı bağla
+            cmbDifficulty.SelectedIndexChanged += (s, e) =>
+            {
+                // ComboBox'tan seçilen itemin başındaki kelimeye göre Enum'ı bulmak daha güvenli olabilir
+                // Ama sırayla eklediğimiz için index kullanabiliriz.
+                // Burada "Easy", "Normal", "Hard" sırasıyla eklenecek.
+
+                // NOT: ComboBox itemleri dinamik olduğu için (sadece açılanları ekleyeceğiz),
+                // Index doğrudan Enum'a denk gelmeyebilir. Tag özelliğini kullanmak en güvenlisidir.
+                if (cmbDifficulty.SelectedItem is ComboBoxItem item)
+                {
+                    _selectedDifficulty = item.Value;
+                }
+
+                UpdateProgressBar();
+            };
+
+            // Progress Bar
+            pbZoneProgress = new GameProgressBar
+            {
+                Maximum = 100,
+                Value = 0,
+                Parent = pnlInfo,
+                Location = new Point(20, 170),
+                Size = new Size(200, 25),
+                BarColor = Color.Gold,
+                ShowPercentage = true
+            };
+
+            this.Controls.Add(pnlInfo);
+
+            btnExplore = new Button
+            {
+                Text = "KEŞFET",
+                Size = new Size(200, 60),
+                Location = new Point(20, 210),
+                BackColor = Color.DarkOrange,
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 14, FontStyle.Bold),
+                Cursor = Cursors.Hand,
+                Parent = pnlInfo
+            };
+            btnExplore.Click += BtnExplore_Click;
+
+            btnBack = new Button
+            {
+                Text = "X",
+                Size = new Size(40, 40),
+                Location = new Point(this.Width - 60, 20),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                BackColor = Color.IndianRed,
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 12, FontStyle.Bold),
+                Cursor = Cursors.Hand,
+                Parent = pnlInfo
+            };
+            btnBack.Click += (s, e) => OnReturnRequested?.Invoke(this, EventArgs.Empty);
+
+            // Arena
+            ucArena = new UcArena();
+            ucArena.Dock = DockStyle.Fill;
+            ucArena.Visible = false;
+
+            ucArena.OnBattleEnded += UcArena_OnBattleEnded;
+            ucArena.OnStatsUpdated += (s, args) =>
+            {
+                if (this.ParentForm is FormMain mainForm) mainForm.UpdateBars();
+            };
+
+            this.Controls.Add(ucArena);
+            ucArena.BringToFront();
+
+            // UI ilk açılışta verileri yükle
+            RefreshDifficultyCombo(hero);
+
+            // Boss readiness is derived from progress and boss-killed status.
+            RecomputeBossState(hero);
+        }
+
+        // Helper Class for ComboBox
+        private class ComboBoxItem
+        {
+            public string Text { get; set; }
+            public ZoneDifficulty Value { get; set; }
+            public override string ToString() => Text;
+        }
+
+        private void RefreshDifficultyCombo(CharacterModel hero)
+        {
+            // DEĞİŞİKLİK: Veritabanı ve ZoneManager kullanarak hangi zorlukların açık olduğunu buluyoruz.
+            cmbDifficulty.Items.Clear();
+
+            // Easy her zaman eklenir
+            cmbDifficulty.Items.Add(new ComboBoxItem { Text = "Kolay (1 Düşman)", Value = ZoneDifficulty.Easy });
+
+            // Normal açık mı?
+            if (_zoneManager.CanEnterDifficulty(hero.CharacterID, _currentZone.ZoneID, ZoneDifficulty.Normal))
+            {
+                cmbDifficulty.Items.Add(new ComboBoxItem { Text = "Normal (2 Düşman - 2x Ödül)", Value = ZoneDifficulty.Normal });
+            }
+
+            // Hard açık mı?
+            if (_zoneManager.CanEnterDifficulty(hero.CharacterID, _currentZone.ZoneID, ZoneDifficulty.Hard))
+            {
+                cmbDifficulty.Items.Add(new ComboBoxItem { Text = "Zor (5 Düşman - 5x Ödül)", Value = ZoneDifficulty.Hard });
+            }
+
+            // Seçimi korumaya çalış, yoksa ilki seç
+            bool found = false;
+            foreach (ComboBoxItem item in cmbDifficulty.Items)
+            {
+                if (item.Value == _selectedDifficulty)
+                {
+                    cmbDifficulty.SelectedItem = item;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found && cmbDifficulty.Items.Count > 0)
+                cmbDifficulty.SelectedIndex = 0;
+
+            // Boss flag'ini güncelle
+            RecomputeBossState(hero);
+
+            UpdateProgressBar();
+        }
+
+        private void RecomputeBossState(CharacterModel hero)
+        {
+            // Boss only spawns if progress reached100 AND boss not yet killed.
+            int currentProg = _zoneManager.GetProgressValue(hero.CharacterID, _currentZone.ZoneID, _selectedDifficulty);
+            bool bossAlreadyKilled = _zoneManager.IsBossKilled(hero.CharacterID, _currentZone.ZoneID, _selectedDifficulty);
+            _bossReadyToSpawn = (currentProg >=100) && !bossAlreadyKilled;
+        }
+
+        private void UpdateProgressBar()
+        {
+            var hero = Core.SessionManager.CurrentCharacter;
+
+            int currentProg = _zoneManager.GetProgressValue(hero.CharacterID, _currentZone.ZoneID, _selectedDifficulty);
+
+            pbZoneProgress.Value = currentProg;
+            pbZoneProgress.BarColor = currentProg >=100 ? Color.LimeGreen : Color.Gold;
+
+            // Keep boss state consistent with DB.
+            RecomputeBossState(hero);
+
+            if (currentProg >=100 && _bossReadyToSpawn)
+            {
+                btnExplore.Text = "BOSS SAVAŞI";
+                btnExplore.BackColor = Color.DarkRed;
+                _isBossFight = true;
+            }
+            else
+            {
+                btnExplore.Text = "KEŞFET";
+                btnExplore.BackColor = Color.DarkOrange;
+                _isBossFight = false;
+            }
+        }
+
+        private void BtnExplore_Click(object sender, EventArgs e)
+        {
+            // Boss savaşı değilse %10 şansla boş geçebilir (Opsiyonel)
+            if (!_isBossFight)
+            {
+                Random rnd = new Random();
+                if (rnd.Next(1, 100) > 90) // %10 boş
+                {
+                    MessageBox.Show("Etraf sessiz görünüyor...");
+                    return;
+                }
+            }
+            StartCombat();
+        }
+
+        private void StartCombat()
+        {
+            // Arayüz Hazırlığı
+            pnlInfo.Visible = false;
+            ucArena.Visible = true;
+            ucArena.Focus();
+
+            var hero = Core.SessionManager.CurrentCharacter;
+            _currentEnemyIDs.Clear();
+
+            // --- Düşman Sayısı ve Gücü ---
+            int enemyCount = 1;
+            float statMultiplier = 1.0f;
+
+            if (_isBossFight)
+            {
+                enemyCount = 1;
+                // Zorluk seviyesine göre boss gücü artar
+                statMultiplier = 1.5f + ((int)_selectedDifficulty * 0.5f);
+            }
+            else
+            {
+                switch (_selectedDifficulty)
+                {
+                    case ZoneDifficulty.Easy:
+                        enemyCount = 1; statMultiplier = 1.0f; break;
+                    case ZoneDifficulty.Normal:
+                        enemyCount = 2; statMultiplier = 1.2f; break;
+                    case ZoneDifficulty.Hard:
+                        enemyCount = 5; statMultiplier = 1.5f; break;
+                }
+            }
+
+            // --- Düşman Şablonu ---
+            var enemyTemplate = _zoneManager.GetEnemyForZone(_currentZone.ZoneID, _isBossFight);
+
+            if (enemyTemplate == null)
+            {
+                MessageBox.Show("Bu bölgede düşman verisi yok!");
+                ucArena.Visible = false;
+                pnlInfo.Visible = true;
+                return;
+            }
+
+            // --- Factory Kullanımı ---
+            List<EnemyModel> enemyList = EnemyFactory.CreateEnemies(enemyTemplate, enemyCount, statMultiplier);
+
+            // IDleri kaydet (Loot için)
+            foreach (var en in enemyList) _currentEnemyIDs.Add(en.EnemyID);
+
+            // Uyarı
+            if (_isBossFight)
+            {
+                MessageBox.Show($"BOSS GELİYOR: {enemyList[0].Name}\nZorluk: {_selectedDifficulty}", "DİKKAT", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+
+            // Savaşa Başla
+            // Not: UcArena içinde StartSurvivalBattle metodun yoksa, StartBattle(hero, enemyList[0]) kullanabilirsin.
+            // Ama hayatta kalma modu için StartSurvivalBattle(hero, List<EnemyModel>) eklediğini varsayıyorum.
+            ucArena.StartSurvivalBattle(hero, enemyList);
+        }
+
+        private void UcArena_OnBattleEnded(object sender, bool victory)
+        {
+            ucArena.Visible = false;
+            pnlInfo.Visible = true;
+            var hero = Core.SessionManager.CurrentCharacter;
+
+            if (victory)
+            {
+                HandleVictory(hero);
+            }
+            else
+            {
+                HandleDefeat(hero);
+            }
+        }
+
+        private void HandleVictory(CharacterModel hero)
+        {
+            string allLoot = "";
+            int totalXP = 0;
+
+            // Zorluk Çarpanı (Daha zor modda daha çok XP)
+            double diffMultiplier = 1.0;
+            if (_selectedDifficulty == ZoneDifficulty.Normal) diffMultiplier = 2.0;
+            if (_selectedDifficulty == ZoneDifficulty.Hard) diffMultiplier = 5.0;
+
+            // Loot ve XP Dağıtımı
+            foreach (var eid in _currentEnemyIDs)
+            {
+                var logs = _lootManager.ProcessLoot(hero.CharacterID, eid);
+                if (logs.Count > 0) allLoot += string.Join("\n", logs) + "\n";
+                totalXP += (int)(20 * diffMultiplier);
+            }
+
+            _levelManager.AddExperience(hero, totalXP);
+
+            string resultMsg = $"Zafer! +{totalXP} XP";
+            if (!string.IsNullOrEmpty(allLoot)) resultMsg += $"\n\nGANİMETLER:\n{allLoot}";
+            MessageBox.Show(resultMsg);
+
+            // --- İLERLEME SİSTEMİ (YENİ) ---
+
+            if (_isBossFight)
+            {
+                // Boss kesildi - boss-killed flag set + progress100
+                _zoneManager.MarkBossKilled(hero.CharacterID, _currentZone.ZoneID, _selectedDifficulty);
+                _bossReadyToSpawn = false;
+
+                // Eğer EASY bittiyse -> Yeni Zone Açılır (Sadece kolay mod tamamlanınca)
+                if (_selectedDifficulty == ZoneDifficulty.Easy)
+                {
+                    if (hero.CurrentZoneID == hero.MaxUnlockedZoneID)
+                    {
+                        // Basitçe MaxZoneID'yi artırıyoruz
+                        hero.MaxUnlockedZoneID++;
+                        _charRepo.UpdateProgress(hero);
+                        MessageBox.Show("Haritada YENİ BÖLGE kilidi açıldı!");
+                    }
+                }
+
+                MessageBox.Show($"{_selectedDifficulty} zorluğu tamamlandı! Boss'u yendiğin için bu aşamayı artık sınırsız normal düşmanlarla oynayabilirsin.");
+            }
+            else
+            {
+                // Normal savaş (Grind) -> only fills progress up to100 until boss is killed.
+                bool bossAlreadyKilled = _zoneManager.IsBossKilled(hero.CharacterID, _currentZone.ZoneID, _selectedDifficulty);
+                if (!bossAlreadyKilled)
+                {
+                    int currentVal = _zoneManager.GetProgressValue(hero.CharacterID, _currentZone.ZoneID, _selectedDifficulty);
+                    if (currentVal <100)
+                    {
+                        int amount =10;
+                        if (_selectedDifficulty == ZoneDifficulty.Normal) amount =7;
+                        if (_selectedDifficulty == ZoneDifficulty.Hard) amount =5;
+
+                        _zoneManager.AddProgress(hero.CharacterID, _currentZone.ZoneID, _selectedDifficulty, amount);
+
+                        // if reached100, next run will be boss
+                        RecomputeBossState(hero);
+                    }
+                }
+                // else: boss already killed => infinite replay; no progress changes.
+            }
+
+            // Arayüzü Güncelle
+            RefreshDifficultyCombo(hero);
+            UpdateProgressBar();
+
+            if (this.ParentForm is FormMain mainForm) mainForm.UpdateUI();
+        }
+
+        private void HandleDefeat(CharacterModel hero)
+        {
+            MessageBox.Show("Öldün... Şehre yaralı olarak dönüyorsun.");
+
+            // Sadece tamamlanmamış modların ilerlemesini sıfırla
+            bool bossAlreadyKilled = _zoneManager.IsBossKilled(hero.CharacterID, _currentZone.ZoneID, _selectedDifficulty);
+            int currentProgress = _zoneManager.GetProgressValue(hero.CharacterID, _currentZone.ZoneID, _selectedDifficulty);
+            if (!bossAlreadyKilled && currentProgress <100)
+            {
+                _zoneManager.ResetProgress(hero.CharacterID, _currentZone.ZoneID, _selectedDifficulty);
+            }
+
+            // Boss çıkma durumunu yeniden hesapla
+            RecomputeBossState(hero);
+
+            // Yarı can ve mana ile devam et
+            int maxHP = StatManager.CalculateMaxHP(hero.VIT, hero.Level);
+            int maxMana = StatManager.CalculateMaxMana(hero.INT, hero.Level);
+            hero.HP = maxHP / 2;
+            hero.Mana = maxMana / 2;
+            
+            _charRepo.UpdateProgress(hero);
+
+            if (this.ParentForm is FormMain mainForm)
+            {
+                Core.SessionManager.CurrentCharacter.HP = hero.HP;
+                Core.SessionManager.CurrentCharacter.Mana = hero.Mana;
+                mainForm.RefreshStats();
+                mainForm.UpdateBars();
+            }
+
+            OnReturnRequested?.Invoke(this, EventArgs.Empty);
+        }
+
+        // Tuş yönlendirmeleri
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (ucArena.Visible) return base.ProcessCmdKey(ref msg, keyData);
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+        public void RelayKeyDown(Keys key) { if (ucArena.Visible) ucArena.HandleKeyDown(key); }
+        public void RelayKeyUp(Keys key) { if (ucArena.Visible) ucArena.HandleKeyUp(key); }
+
+        // Public method to refresh battle-related stats from session/main form
+        public void RefreshBattleStats()
+        {
+            // Update internal hero reference and bars
+            var hero = Core.SessionManager.CurrentCharacter;
+            if (hero == null) return;
+
+            // Refresh difficulty combo and progress bar
+            RefreshDifficultyCombo(hero);
+            UpdateProgressBar();
+        }
+    }
+}

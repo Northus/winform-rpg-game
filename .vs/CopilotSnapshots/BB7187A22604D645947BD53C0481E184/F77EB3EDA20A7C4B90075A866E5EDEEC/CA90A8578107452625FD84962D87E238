@@ -1,0 +1,111 @@
+﻿using System;
+using System.Collections.Generic;
+using Microsoft.Data.SqlClient;
+using rpg_deneme.Models;
+using rpg_deneme.Core;
+
+namespace rpg_deneme.Data
+{
+    public class ShopRepository
+    {
+        // 1. Belirli bir marketin (ShopID) ürünlerini getir
+        public List<ItemInstance> GetShopItems(int shopId)
+        {
+            var list = new List<ItemInstance>();
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                conn.Open();
+                // ItemTemplates ile ShopItems tablolarını birleştiriyoruz
+                string sql = @"
+                SELECT 
+                    S.Price AS ShopPrice, -- marketteki fiyat
+                    T.TemplateID, T.Name, T.ItemType, T.IsStackable, T.MaxStack, 
+                    T.BaseMinDamage, T.BaseDefense, T.EffectType, T.EffectValue,
+                    T.SellPrice
+                FROM ShopItems S
+                INNER JOIN ItemTemplates T ON S.TemplateID = T.TemplateID
+                WHERE S.ShopID = @sid";
+
+                SqlCommand cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@sid", shopId);
+
+                using (var dr = cmd.ExecuteReader())
+                {
+                    while (dr.Read())
+                    {
+                        var itemType = (Enums.ItemType)(byte)dr["ItemType"];
+
+                        list.Add(new ItemInstance
+                        {
+                            InstanceID = 0,
+                            TemplateID = (int)dr["TemplateID"],
+                            Name = dr["Name"].ToString(),
+                            ItemType = itemType,
+                            IsStackable = dr["IsStackable"] != DBNull.Value && (bool)dr["IsStackable"],
+                            MaxStack = dr["MaxStack"] != DBNull.Value ? (int)dr["MaxStack"] : 1, // MaxStack eklendi
+                            BuyPrice = Convert.ToInt32(dr["ShopPrice"]),
+                            EffectValue = dr["EffectValue"] != DBNull.Value ? (int)dr["EffectValue"] : 0,
+                            EffectType = dr["EffectType"] != DBNull.Value ? (Enums.ItemEffectType)(byte)dr["EffectType"] : Enums.ItemEffectType.None,
+
+                            // Grade: ekipmanlar Common ile başlar; diğerleri Others (gri)
+                            Grade = (itemType == Enums.ItemType.Weapon || itemType == Enums.ItemType.Armor)
+                                    ? Enums.ItemGrade.Common
+                                    : Enums.ItemGrade.Others,
+                            UpgradeLevel = 0,
+                            Count = 1
+                        });
+                    }
+                }
+            }
+            return list;
+        }
+
+        // 2. ALIŞ FİYATI SORGULA (Güvenlik İçin)
+        // UI'dan gelen fiyata güvenmek yerine, satın alma anında veritabanından o marketteki fiyatı teyit ediyoruz.
+        public int GetShopItemPrice(int shopId, int templateId)
+        {
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                conn.Open();
+                string sql = "SELECT Price FROM ShopItems WHERE ShopID = @sid AND TemplateID = @tid";
+                SqlCommand cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@sid", shopId);
+                cmd.Parameters.AddWithValue("@tid", templateId);
+
+                object result = cmd.ExecuteScalar();
+                return result != null ? Convert.ToInt32(result) : -1; // -1: Bu markette bu ürün yok
+            }
+        }
+
+        // 3. SATIŞ DEĞERİ SORGULA (Global Değer)
+        // Oyuncu eşyayı satarken, markette olup olmamasından bağımsız olarak 'ItemTemplates' tablosundaki değere bakarız.
+        public int GetGlobalSellPrice(int templateId)
+        {
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                conn.Open();
+                string sql = "SELECT SellPrice FROM ItemTemplates WHERE TemplateID = @tid";
+                SqlCommand cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@tid", templateId);
+
+                object result = cmd.ExecuteScalar();
+                // Eğer SellPrice NULL ise 0 döner
+                return result != null && result != DBNull.Value ? Convert.ToInt32(result) : 0;
+            }
+        }
+
+        // Oyuncunun parasını güncelle
+        public bool UpdateGold(int charId, long newGoldAmount)
+        {
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                conn.Open();
+                string sql = "UPDATE Characters SET Gold = @gold WHERE CharacterID = @id";
+                SqlCommand cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@gold", newGoldAmount);
+                cmd.Parameters.AddWithValue("@id", charId);
+                return cmd.ExecuteNonQuery() > 0;
+            }
+        }
+    }
+}

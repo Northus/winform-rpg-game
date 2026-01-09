@@ -1,0 +1,53 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Collections.Generic;
+using rpg_deneme.Models;
+using Microsoft.Data.SqlClient;
+
+namespace rpg_deneme.Data
+{
+    public class LootRepository
+    {
+        // Loot tablosunu çekerken artık ItemTemplates ile birleştirip
+        // o eşyanın tipini, stacklenebilir olup olmadığını da öğreniyoruz.
+        public List<LootTableModel> GetLootTableForEnemy(int enemyId)
+        {
+            var list = new List<LootTableModel>();
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                conn.Open();
+                // SQL GÜNCELLENDİ: ItemTemplates tablosuna JOIN atıldı
+                string sql = @"
+                    SELECT L.LootID, L.EnemyID, L.TemplateID, L.DropRate, L.MinLevel,
+                           T.ItemType, T.IsStackable, T.MaxStack
+                    FROM LootTables L
+                    INNER JOIN ItemTemplates T ON L.TemplateID = T.TemplateID
+                    WHERE L.EnemyID = @eid";
+
+                SqlCommand cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@eid", enemyId);
+
+                using (var dr = cmd.ExecuteReader())
+                {
+                    while (dr.Read())
+                    {
+                        list.Add(new LootTableModel
+                        {
+                            LootID = (int)dr["LootID"],
+                            EnemyID = (int)dr["EnemyID"],
+                            TemplateID = (int)dr["TemplateID"],
+                            DropRate = Convert.ToDouble(dr["DropRate"]),
+                            ItemType = (Core.Enums.ItemType)(byte)dr["ItemType"],
+                            IsStackable = dr["IsStackable"] != DBNull.Value && (bool)dr["IsStackable"],
+                            MaxStack = dr["MaxStack"] != DBNull.Value ? (int)dr["MaxStack"] : 1
+                        });
+                    }
+                }
+            }
+            return list;
+        }
+    }
+}

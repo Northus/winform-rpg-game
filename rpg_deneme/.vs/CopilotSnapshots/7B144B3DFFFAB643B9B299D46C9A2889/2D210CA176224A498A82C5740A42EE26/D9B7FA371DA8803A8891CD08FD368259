@@ -1,0 +1,83 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Drawing;
+
+namespace rpg_deneme.UI.Controls.GameEntities;
+
+public class SkillProjectile
+{
+    public float X;
+    public float Y;
+    public float DX;
+    public float DY;
+    public int Damage;
+    public int Size = 10;
+    public bool IsEnemy;
+    public bool IsCrit;
+    public bool IsAoE = false;
+    public int AoERadius = 50;
+    public Rectangle Bounds => new Rectangle((int)X - Size / 2, (int)Y - Size / 2, Size, Size);
+
+    public int VisualType = 0;
+    public Color CustomColor = Color.Empty;
+
+    public int AnimTick = 0;
+ 
+    // Simple trail array - direct access, no abstraction overhead
+    private readonly PointF[] _trailBuffer = new PointF[8];
+    private int _trailHead = 0;  // where to write next
+    private int _trailCount = 0;
+
+    // Direct access methods for trail - avoid interface/struct overhead
+    public int TrailCount => _trailCount;
+    
+    public PointF GetTrailPoint(int index)
+    {
+        if (index < 0 || index >= _trailCount) return default;
+        // oldest to newest: start from (head - count) and go forward
+     int actualIndex = (_trailHead - _trailCount + index + 8) % 8;
+        return _trailBuffer[actualIndex];
+    }
+
+    public SkillProjectile(float x, float y, float tx, float ty, int dmg, bool enemy, bool isCrit = false, int visualType = 0)
+    {
+        X = x;
+        Y = y;
+    Damage = dmg;
+        IsEnemy = enemy;
+        IsCrit = isCrit;
+  VisualType = visualType;
+
+        Size = visualType switch
+    {
+   1 => 14,
+     2 => 10,
+   3 => 12,
+            _ => enemy ? 8 : 10
+        };
+
+   float spd = enemy ? 5f : 9f;
+        if (visualType == 1) spd = 11f;
+        if (visualType == 2) spd = 13f;
+        if (visualType == 3) spd = 10f;
+
+        float dx = tx - x;
+        float dy = ty - y;
+        float dist = MathF.Sqrt(dx * dx + dy * dy);
+        if (dist < 1f) dist = 1f;
+    DX = dx / dist * spd;
+        DY = dy / dist * spd;
+    }
+
+    public void Move()
+ {
+    // Add current position to circular buffer
+        _trailBuffer[_trailHead] = new PointF(X, Y);
+        _trailHead = (_trailHead + 1) % 8;
+        if (_trailCount < 8) _trailCount++;
+
+     X += DX;
+        Y += DY;
+        AnimTick++;
+    }
+}

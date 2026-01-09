@@ -1,0 +1,26 @@
+﻿using Microsoft.Data.SqlClient;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace rpg_deneme.Data
+{
+    public static class DatabaseHelper
+    {
+        // Bağlantı cümlemizi merkezi bir sabit olarak tanımlıyoruz.
+        // Yarın bir gün veritabanı adresi değişirse sadece burayı değiştirmemiz yetecek.
+        private const string ConnectionString = "Data Source=sarac;Initial Catalog = rpgDB; Integrated Security = True; Persist Security Info=False;Pooling=False;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=True;Application Name =\"SQL Server Management Studio\";Command Timeout=0";
+
+        /// <summary>
+        /// SQL Server ile bağlantı kurup açık bir bağlantı nesnesi döner.
+        /// </summary>
+        public static SqlConnection GetConnection()
+        {
+            return new SqlConnection(ConnectionString);
+        }
+
+        // İleride buraya ortak metotlar ekleyebiliriz (Örn: ExecuteNonQuery gibi)
+    }
+}

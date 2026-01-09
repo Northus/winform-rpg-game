@@ -1,0 +1,445 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Data.SQLite;
+using rpg_deneme.Core;
+using rpg_deneme.Models;
+
+namespace rpg_deneme.Data
+{
+    public class InventoryRepository
+    {
+        public List<ItemInstance> GetCharacterInventory(int characterId)
+        {
+            var items = new List<ItemInstance>();
+
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                // SQL Sorgusu: ItemInstances ve ItemTemplates tablolarını birleştirir
+                string sql = @"
+                    SELECT 
+                        I.InstanceID, I.TemplateID, I.SlotIndex, I.Grade, I.Location, I.Count, I.LastUsed, 
+                        I.UpgradeLevel, I.OwnerID,
+                        T.Name, T.BaseMinDamage, T.BaseMaxDamage, 
+                        T.EffectType, T.EffectValue, T.Cooldown, 
+                        T.ItemType, T.BaseMinMagicDamage, T.BaseMaxMagicDamage, T.BaseDefense,
+                        T.ReqClass, T.IsStackable, T.MaxStack 
+                    FROM ItemInstances I
+                    INNER JOIN ItemTemplates T ON I.TemplateID = T.TemplateID
+                    WHERE I.OwnerID = @charId";
+
+                using var cmd = new SQLiteCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@charId", characterId);
+
+                conn.Open();
+                using (var dr = cmd.ExecuteReader())
+                {
+                    while (dr.Read())
+                    {
+                        items.Add(new ItemInstance
+                        {
+                            InstanceID = Convert.ToInt64(dr["InstanceID"]),
+                            TemplateID = Convert.ToInt32(dr["TemplateID"]),
+                            OwnerID = Convert.ToInt32(dr["OwnerID"]),
+                            SlotIndex = Convert.ToInt32(dr["SlotIndex"]),
+                            Grade = (Enums.ItemGrade)Convert.ToByte(dr["Grade"]),
+                            Location = (Enums.ItemLocation)Convert.ToByte(dr["Location"]),
+                            Name = dr["Name"]?.ToString(),
+                            MinDamage = dr["BaseMinDamage"] != DBNull.Value ? Convert.ToInt32(dr["BaseMinDamage"]) :0,
+                            MaxDamage = dr["BaseMaxDamage"] != DBNull.Value ? Convert.ToInt32(dr["BaseMaxDamage"]) :0,
+                            BaseDefense = dr["BaseDefense"] != DBNull.Value ? Convert.ToInt32(dr["BaseDefense"]) :0,
+                            MinMagicDamage = dr["BaseMinMagicDamage"] != DBNull.Value ? Convert.ToInt32(dr["BaseMinMagicDamage"]) :0,
+                            MaxMagicDamage = dr["BaseMaxMagicDamage"] != DBNull.Value ? Convert.ToInt32(dr["BaseMaxMagicDamage"]) :0,
+                            Count = dr["Count"] != DBNull.Value ? Convert.ToInt32(dr["Count"]) :1,
+                            EffectType = dr["EffectType"] != DBNull.Value ? (Enums.ItemEffectType)Convert.ToByte(dr["EffectType"]) : Enums.ItemEffectType.None,
+                            EffectValue = dr["EffectValue"] != DBNull.Value ? Convert.ToInt32(dr["EffectValue"]) :0,
+                            Cooldown = dr["Cooldown"] != DBNull.Value ? Convert.ToInt32(dr["Cooldown"]) :0,
+                            LastUsed = dr["LastUsed"] == DBNull.Value ? null : (DateTime?)Convert.ToDateTime(dr["LastUsed"]),
+                            ItemType = (Enums.ItemType)Convert.ToByte(dr["ItemType"]),
+                            UpgradeLevel = dr["UpgradeLevel"] != DBNull.Value ? Convert.ToInt32(dr["UpgradeLevel"]) :0,
+                            AllowedClass = dr["ReqClass"] == DBNull.Value ? (byte?)null : Convert.ToByte(dr["ReqClass"]),
+                            IsStackable = dr["IsStackable"] != DBNull.Value && Convert.ToBoolean(dr["IsStackable"]),
+                            MaxStack = dr["MaxStack"] != DBNull.Value ? Convert.ToInt32(dr["MaxStack"]) :1
+                        });
+                    }
+                }
+            }
+            return items;
+        }
+        public bool MoveItem(long instanceId, int newSlotIndex)
+        {
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                string sql = "UPDATE ItemInstances SET SlotIndex = @newSlot WHERE InstanceID = @id";
+                using var cmd = new SQLiteCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@newSlot", newSlotIndex);
+                cmd.Parameters.AddWithValue("@id", instanceId);
+
+                conn.Open();
+                return cmd.ExecuteNonQuery() >0;
+            }
+        }
+        public void UpdateLastUsed(long instanceId)
+        {
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                // SQLite equivalent of GETDATE()
+                string sql = "UPDATE ItemInstances SET LastUsed = CURRENT_TIMESTAMP WHERE InstanceID = @id";
+                using var cmd = new SQLiteCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@id", instanceId);
+                conn.Open();
+                cmd.ExecuteNonQuery();
+            }
+        }
+        public void ConsumeItem(long instanceId, int amountToConsume)
+        {
+            // Fix: subtract the requested amount; if remaining <=0 delete the row.
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                conn.Open();
+
+                // Get current count
+                string sel = "SELECT Count FROM ItemInstances WHERE InstanceID = @id";
+                using var selCmd = new SQLiteCommand(sel, conn);
+                selCmd.Parameters.AddWithValue("@id", instanceId);
+                object result = selCmd.ExecuteScalar();
+
+                if (result == null || result == DBNull.Value)
+                {
+                    // Nothing to do
+                    return;
+                }
+
+                int currentCount = Convert.ToInt32(result);
+
+                if (currentCount > amountToConsume)
+                {
+                    string upd = "UPDATE ItemInstances SET Count = Count - @amt WHERE InstanceID = @id";
+                    using var updCmd = new SQLiteCommand(upd, conn);
+                    updCmd.Parameters.AddWithValue("@amt", amountToConsume);
+                    updCmd.Parameters.AddWithValue("@id", instanceId);
+                    updCmd.ExecuteNonQuery();
+                }
+                else
+                {
+                    string del = "DELETE FROM ItemInstances WHERE InstanceID = @id";
+                    using var delCmd = new SQLiteCommand(del, conn);
+                    delCmd.Parameters.AddWithValue("@id", instanceId);
+                    delCmd.ExecuteNonQuery();
+                }
+            }
+        }
+        public bool MoveItemLocation(long instanceId, Core.Enums.ItemLocation newLoc, int newSlot)
+        {
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                string sql = "UPDATE ItemInstances SET Location = @loc, SlotIndex = @slot WHERE InstanceID = @id";
+
+                using var cmd = new SQLiteCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@loc", (byte)newLoc);
+                cmd.Parameters.AddWithValue("@slot", newSlot);
+                cmd.Parameters.AddWithValue("@id", instanceId);
+
+                conn.Open();
+                return cmd.ExecuteNonQuery() >0;
+            }
+        }
+        public int FindFirstEmptyInventorySlot(int characterId)
+        {
+            var usedSlots = new HashSet<int>();
+
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                string sql = "SELECT SlotIndex FROM ItemInstances WHERE OwnerID = @charId AND Location =1";
+
+                using var cmd = new SQLiteCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@charId", characterId);
+
+                conn.Open();
+                using (var dr = cmd.ExecuteReader())
+                {
+                    while (dr.Read())
+                    {
+                        if (dr["SlotIndex"] != DBNull.Value)
+                        {
+                            usedSlots.Add(Convert.ToInt32(dr["SlotIndex"]));
+                        }
+                    }
+                }
+            }
+            for (int i =0; i <40; i++)
+            {
+                if (!usedSlots.Contains(i))
+                {
+                    return i;
+                }
+            }
+            return -1;
+        }
+        public ItemInstance GetItemAt(int characterId, Core.Enums.ItemLocation loc, int slotIndex)
+        {
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                string sql = @"SELECT I.InstanceID, I.TemplateID, I.SlotIndex, I.Grade, I.Location, I.Count, I.LastUsed, I.UpgradeLevel, I.OwnerID,
+                                 T.Name, T.BaseMinDamage, T.BaseMaxDamage, T.EffectType, T.EffectValue, T.Cooldown, T.ItemType, T.BaseMinMagicDamage, T.BaseMaxMagicDamage, T.BaseDefense, T.ReqClass, T.IsStackable, T.MaxStack
+                            FROM ItemInstances I
+                            INNER JOIN ItemTemplates T ON I.TemplateID = T.TemplateID
+                            WHERE I.OwnerID = @charId AND I.Location = @loc AND I.SlotIndex = @slot";
+                using var cmd = new SQLiteCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@charId", characterId);
+                cmd.Parameters.AddWithValue("@loc", (byte)loc);
+                cmd.Parameters.AddWithValue("@slot", slotIndex);
+
+                conn.Open();
+                using (var dr = cmd.ExecuteReader())
+                {
+                    if (dr.Read())
+                    {
+                        return new ItemInstance
+                        {
+                            InstanceID = Convert.ToInt64(dr["InstanceID"]),
+                            TemplateID = Convert.ToInt32(dr["TemplateID"]),
+                            OwnerID = Convert.ToInt32(dr["OwnerID"]),
+                            SlotIndex = Convert.ToInt32(dr["SlotIndex"]),
+                            Grade = (Enums.ItemGrade)Convert.ToByte(dr["Grade"]),
+                            Location = (Enums.ItemLocation)Convert.ToByte(dr["Location"]),
+                            Count = Convert.ToInt32(dr["Count"]),
+                            Name = dr["Name"]?.ToString(),
+                            EffectType = dr["EffectType"] != DBNull.Value ? (Enums.ItemEffectType)Convert.ToByte(dr["EffectType"]) : Enums.ItemEffectType.None,
+                            EffectValue = dr["EffectValue"] != DBNull.Value ? Convert.ToInt32(dr["EffectValue"]) :0,
+                            Cooldown = dr["Cooldown"] != DBNull.Value ? Convert.ToInt32(dr["Cooldown"]) :0,
+                            LastUsed = dr["LastUsed"] == DBNull.Value ? null : (DateTime?)Convert.ToDateTime(dr["LastUsed"]),
+                            ItemType = (Enums.ItemType)Convert.ToByte(dr["ItemType"]),
+                            IsStackable = dr["IsStackable"] != DBNull.Value && Convert.ToBoolean(dr["IsStackable"]),
+                            MaxStack = dr["MaxStack"] != DBNull.Value ? Convert.ToInt32(dr["MaxStack"]) :1,
+                            UpgradeLevel = dr["UpgradeLevel"] != DBNull.Value ? Convert.ToInt32(dr["UpgradeLevel"]) :0,
+                        };
+                    }
+                }
+            }
+            return null;
+        }
+
+        // Yeni: template'ten ItemType, AllowedClass ve IsStackable bilgilerini getirir
+        public (Enums.ItemType ItemType, byte? AllowedClass, bool IsStackable) GetTemplateInfo(int templateId)
+        {
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                string sql = "SELECT ItemType, ReqClass, IsStackable FROM ItemTemplates WHERE TemplateID = @tid";
+                using var cmd = new SQLiteCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@tid", templateId);
+                conn.Open();
+                using (var dr = cmd.ExecuteReader())
+                {
+                    if (dr.Read())
+                    {
+                        var it = (Enums.ItemType)Convert.ToByte(dr["ItemType"]);
+                        byte? allowed = dr["ReqClass"] == DBNull.Value ? (byte?)null : Convert.ToByte(dr["ReqClass"]);
+                        bool stk = dr["IsStackable"] != DBNull.Value && Convert.ToBoolean(dr["IsStackable"]);
+
+                        return (it, allowed, stk);
+                    }
+                }
+            }
+            // Varsayılan: bulunamazsa Weapon, izinsiz null, stack false
+            return (Enums.ItemType.Weapon, null, false);
+        }
+
+        // Yeni: envanterde aynı template için, inventory konumunda mevcut bir stack var mı getir
+        public ItemInstance FindStackableItem(int characterId, int templateId)
+        {
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                string sql = "SELECT InstanceID, Count, SlotIndex, TemplateID, OwnerID FROM ItemInstances WHERE OwnerID=@charId AND TemplateID=@tid AND Location=@loc";
+                using var cmd = new SQLiteCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@charId", characterId);
+                cmd.Parameters.AddWithValue("@tid", templateId);
+                cmd.Parameters.AddWithValue("@loc", (byte)Enums.ItemLocation.Inventory);
+
+                conn.Open();
+                using (var dr = cmd.ExecuteReader())
+                {
+                    if (dr.Read())
+                    {
+                        return new ItemInstance
+                        {
+                            InstanceID = Convert.ToInt64(dr["InstanceID"]),
+                            Count = Convert.ToInt32(dr["Count"]),
+                            SlotIndex = Convert.ToInt32(dr["SlotIndex"]),
+                            OwnerID = Convert.ToInt32(dr["OwnerID"]),
+                            TemplateID = Convert.ToInt32(dr["TemplateID"]),
+                            Location = Enums.ItemLocation.Inventory
+                        };
+                    }
+                }
+            }
+            return null;
+        }
+
+        // Yeni: mevcut item'ın Count değerini artır
+        public bool IncrementItemCount(long instanceId, int add)
+        {
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                string sql = "UPDATE ItemInstances SET Count = Count + @add WHERE InstanceID = @id";
+                using var cmd = new SQLiteCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@add", add);
+                cmd.Parameters.AddWithValue("@id", instanceId);
+                conn.Open();
+                return cmd.ExecuteNonQuery() >0;
+            }
+        }
+
+        public ItemInstance FindStackableItemWithCapacity(int characterId, int templateId, int maxStack)
+        {
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                // SQLite doesn't support TOP; use LIMIT
+                string sql = @"
+                SELECT I.InstanceID, I.Count, I.SlotIndex, I.TemplateID, I.OwnerID, T.IsStackable, T.MaxStack, T.Name, T.ItemType
+                FROM ItemInstances I
+                INNER JOIN ItemTemplates T ON I.TemplateID = T.TemplateID
+                WHERE I.OwnerID = @charId
+                AND I.TemplateID = @tid
+                AND I.Location = @loc
+                AND I.Count < @maxStack
+                LIMIT1";
+
+                using var cmd = new SQLiteCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@charId", characterId);
+                cmd.Parameters.AddWithValue("@tid", templateId);
+                cmd.Parameters.AddWithValue("@loc", (byte)Enums.ItemLocation.Inventory);
+                cmd.Parameters.AddWithValue("@maxStack", maxStack);
+
+                conn.Open();
+                using (var dr = cmd.ExecuteReader())
+                {
+                    if (dr.Read())
+                    {
+                        return new ItemInstance
+                        {
+                            InstanceID = Convert.ToInt64(dr["InstanceID"]),
+                            Count = Convert.ToInt32(dr["Count"]),
+                            SlotIndex = Convert.ToInt32(dr["SlotIndex"]),
+                            OwnerID = Convert.ToInt32(dr["OwnerID"]),
+                            TemplateID = Convert.ToInt32(dr["TemplateID"]),
+                            IsStackable = dr["IsStackable"] != DBNull.Value && Convert.ToBoolean(dr["IsStackable"]),
+                            MaxStack = dr["MaxStack"] != DBNull.Value ? Convert.ToInt32(dr["MaxStack"]) :1,
+                            Name = dr["Name"] != DBNull.Value ? dr["Name"].ToString() : string.Empty,
+                            ItemType = dr["ItemType"] != DBNull.Value ? (Enums.ItemType)Convert.ToByte(dr["ItemType"]) : Enums.ItemType.Weapon,
+                            Location = Enums.ItemLocation.Inventory
+                        };
+                    }
+                }
+            }
+            return null;
+        }
+
+        public bool AddItemDirectly(ItemInstance item)
+        {
+            // Ensure grade consistency
+            if (item.ItemType == Enums.ItemType.Weapon || item.ItemType == Enums.ItemType.Armor)
+            {
+                if (item.Grade ==0) item.Grade = Enums.ItemGrade.Common;
+            }
+            else
+            {
+                item.Grade = Enums.ItemGrade.Others;
+            }
+
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                conn.Open();
+                string sql = @"INSERT INTO ItemInstances (TemplateID, OwnerID, SlotIndex, Grade, Location, Count) 
+                       VALUES (@tid, @oid, @slot, @grade, @loc, @count)";
+                using var cmd = new SQLiteCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@tid", item.TemplateID);
+                cmd.Parameters.AddWithValue("@oid", item.OwnerID);
+                cmd.Parameters.AddWithValue("@slot", item.SlotIndex);
+                cmd.Parameters.AddWithValue("@grade", (byte)item.Grade);
+                cmd.Parameters.AddWithValue("@loc", (byte)item.Location);
+                cmd.Parameters.AddWithValue("@count", item.Count);
+                return cmd.ExecuteNonQuery() >0;
+            }
+        }
+
+        public (Enums.ItemType ItemType, bool IsStackable, int MaxStack, string Name) GetTemplateBasicInfo(int templateId)
+        {
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                string sql = "SELECT ItemType, IsStackable, MaxStack, Name FROM ItemTemplates WHERE TemplateID = @tid";
+                using var cmd = new SQLiteCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@tid", templateId);
+                conn.Open();
+                using (var dr = cmd.ExecuteReader())
+                {
+                    if (dr.Read())
+                    {
+                        var it = (Enums.ItemType)Convert.ToByte(dr["ItemType"]);
+                        bool stk = dr["IsStackable"] != DBNull.Value && Convert.ToBoolean(dr["IsStackable"]);
+                        int max = dr["MaxStack"] != DBNull.Value ? Convert.ToInt32(dr["MaxStack"]) :1;
+                        string name = dr["Name"] != DBNull.Value ? dr["Name"].ToString() : string.Empty;
+                        return (it, stk, max, name);
+                    }
+                }
+            }
+            return (Enums.ItemType.Weapon, false,1, string.Empty);
+        }
+
+        public List<ItemInstance> GetSharedStorageItems()
+        {
+            var items = new List<ItemInstance>();
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                string sql = @"
+                SELECT 
+                I.InstanceID, I.TemplateID, I.SlotIndex, I.Grade, I.Location, I.Count, I.LastUsed, I.UpgradeLevel,
+                I.OwnerID, T.Name, T.BaseMinDamage, T.BaseMaxDamage, T.EffectType, T.EffectValue, T.Cooldown, 
+                T.ItemType, T.BaseMinMagicDamage, T.BaseMaxMagicDamage, T.BaseDefense, T.ReqClass, T.IsStackable, T.MaxStack
+                FROM ItemInstances I
+                INNER JOIN ItemTemplates T ON I.TemplateID = T.TemplateID
+                WHERE I.Location = @loc";
+
+                using var cmd = new SQLiteCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@loc", (byte)Enums.ItemLocation.Storage);
+                conn.Open();
+                using (var dr = cmd.ExecuteReader())
+                {
+                    while (dr.Read())
+                    {
+                        items.Add(new ItemInstance
+                        {
+                            InstanceID = Convert.ToInt64(dr["InstanceID"]),
+                            TemplateID = Convert.ToInt32(dr["TemplateID"]),
+                            OwnerID = Convert.ToInt32(dr["OwnerID"]),
+                            SlotIndex = Convert.ToInt32(dr["SlotIndex"]),
+                            Grade = (Enums.ItemGrade)Convert.ToByte(dr["Grade"]),
+                            Location = (Enums.ItemLocation)Convert.ToByte(dr["Location"]),
+                            Count = Convert.ToInt32(dr["Count"]),
+                            Name = dr["Name"]?.ToString(),
+                            ItemType = (Enums.ItemType)Convert.ToByte(dr["ItemType"]),
+                            IsStackable = dr["IsStackable"] != DBNull.Value && Convert.ToBoolean(dr["IsStackable"]),
+                            MaxStack = dr["MaxStack"] != DBNull.Value ? Convert.ToInt32(dr["MaxStack"]) :1,
+                            UpgradeLevel = dr["UpgradeLevel"] != DBNull.Value ? Convert.ToInt32(dr["UpgradeLevel"]) :0,
+                            EffectType = dr["EffectType"] != DBNull.Value ? (Enums.ItemEffectType)Convert.ToByte(dr["EffectType"]) : Enums.ItemEffectType.None,
+                            EffectValue = dr["EffectValue"] != DBNull.Value ? Convert.ToInt32(dr["EffectValue"]) :0
+                        });
+                    }
+                }
+            }
+            return items;
+        }
+
+        public void UpdateItemOwner(long instanceId, int newOwnerId)
+        {
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                string sql = "UPDATE ItemInstances SET OwnerID = @oid WHERE InstanceID = @id";
+                using var cmd = new SQLiteCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@oid", newOwnerId);
+                cmd.Parameters.AddWithValue("@id", instanceId);
+                conn.Open();
+                cmd.ExecuteNonQuery();
+            }
+        }
+    }
+}

@@ -1,0 +1,62 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace rpg_deneme.Models
+{
+    // Veritabanındaki ItemInstances tablosunun karşılığı
+    public class ItemInstance
+    {
+        public long InstanceID { get; set; }
+        public int TemplateID { get; set; }
+        public int OwnerID { get; set; }
+        public int Count { get; set; }
+        public int SlotIndex { get; set; }
+
+        // Bu property veritabanında yok ama kod içinde hesaplama yaparken işimize yarayacak
+        // Veritabanından Template tablosuyla JOIN yaparak dolduracağız.
+        public string Name { get; set; }
+        public int MinDamage { get; set; }
+        public int MaxDamage { get; set; }
+        public int MinMagicDamage { get; set; }
+        public int MaxMagicDamage { get; set; }
+        public int BaseDefense { get; set; }
+
+        // Core katmanındaki Enums dosyasından gelecek tipler
+        public Core.Enums.ItemGrade Grade { get; set; }
+        public Core.Enums.ItemLocation Location { get; set; }
+
+        // Template'den gelen veriler (StatManager ve ConsumableManager kullanacak)
+        public Core.Enums.ItemEffectType EffectType { get; set; }
+        public int EffectValue { get; set; }
+        public int Cooldown { get; set; } // Saniye cinsinden
+
+        // Instance verisi (Kişiye özel)
+        public DateTime? LastUsed { get; set; }
+
+        public Core.Enums.ItemType ItemType { get; set; } // Silah mı, İksir mi?
+        public int UpgradeLevel { get; set; } // +1, +2 durumu (Sadece ekipman için)
+
+        // Yeni: Template tablosundan gelen sınıf kısıtlaması (nullable)
+        public byte? AllowedClass { get; set; }
+
+        // Yeni: Template'den gelen yığılıp yığılamayacağı bilgisi
+        public bool IsStackable { get; set; }
+
+        // Yardımcı özellik: Kalan bekleme süresini hesaplar
+        public int RemainingCooldownSeconds
+        {
+            get
+            {
+                if (!LastUsed.HasValue || Cooldown == 0) return 0;
+
+                var passed = (DateTime.Now - LastUsed.Value).TotalSeconds;
+                var remaining = Cooldown - passed;
+
+                return remaining > 0 ? (int)remaining : 0;
+            }
+        }
+    }
+}

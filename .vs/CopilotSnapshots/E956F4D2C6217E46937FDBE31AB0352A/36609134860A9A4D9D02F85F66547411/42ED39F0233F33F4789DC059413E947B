@@ -1,0 +1,431 @@
+﻿using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using rpg_deneme.Business;
+using rpg_deneme.Core;
+using rpg_deneme.Models;
+using rpg_deneme.UI.Controls;
+using rpg_deneme.Data;
+
+namespace rpg_deneme.UI.Windows
+{
+    public partial class UcBlacksmith : GameWindow
+    {
+        // 4 Slot
+        private UcItemSlot slotMain;     // 0: Ekipman
+        private UcItemSlot slotMaterial; // 1: Demir
+        private UcItemSlot slotLucky;    // 2: Şans
+        private UcItemSlot slotResult;   // 3: Sonuç
+
+        private Button btnUpgrade;
+        private Label lblInfo;
+        private Label lblChance;
+
+        private UpgradeManager _upgManager = new UpgradeManager();
+        private InventoryManager _invManager = new InventoryManager(); // Sonucu çantaya almak için
+
+        private InventoryRepository _repo = new InventoryRepository();
+        private List<ItemInstance> _tempItems = new List<ItemInstance>(); // tracked temp items
+        private Dictionary<int,int> _slotToStorage = new Dictionary<int,int>(); // blacksmith slot index -> storage slot index
+
+        public UcBlacksmith()
+        {
+            this.Title = "DEMİRCİ";
+            this.Size = new Size(360, 300);
+            SetupUI();
+
+            this.VisibleChanged += UcBlacksmith_VisibleChanged;
+        }
+        // External callers (FormMain) can call this to force UI refresh from DB
+        public void RefreshFromDb()
+        {
+            var hero = Core.SessionManager.CurrentCharacter;
+            if (hero == null) return;
+
+            // slotMain -> storage slot0
+            var m = _repo.GetItemAt(hero.CharacterID, Enums.ItemLocation.Storage, slotMain.SlotIndex);
+            if (m != null) { slotMain.SetItem(m); if (!_tempItems.Any(x => x.InstanceID == m.InstanceID)) { _tempItems.Add(m); SessionManager.ReserveItem(m.InstanceID); } }
+            else { slotMain.SetItem(null); }
+
+            var mat = _repo.GetItemAt(hero.CharacterID, Enums.ItemLocation.Storage, slotMaterial.SlotIndex);
+            if (mat != null) { slotMaterial.SetItem(mat); if (!_tempItems.Any(x => x.InstanceID == mat.InstanceID)) { _tempItems.Add(mat); SessionManager.ReserveItem(mat.InstanceID); } }
+            else { slotMaterial.SetItem(null); }
+
+            var lk = _repo.GetItemAt(hero.CharacterID, Enums.ItemLocation.Storage, slotLucky.SlotIndex);
+            if (lk != null) { slotLucky.SetItem(lk); if (!_tempItems.Any(x => x.InstanceID == lk.InstanceID)) { _tempItems.Add(lk); SessionManager.ReserveItem(lk.InstanceID); } }
+            else { slotLucky.SetItem(null); }
+
+            var res = _repo.GetItemAt(hero.CharacterID, Enums.ItemLocation.Storage, slotResult.SlotIndex);
+            if (res != null) { slotResult.SetItem(res); }
+            else { slotResult.SetItem(null); }
+            UpdateInfo();
+        }
+
+        private void UcBlacksmith_VisibleChanged(object sender, EventArgs e)
+        {
+            // When hiding the blacksmith (closing), rollback any temp items not committed
+            if (!this.Visible)
+            {
+                RollbackTempItems();
+            }
+        }
+
+        private void SetupUI()
+        {
+            // Panel ortalamak için
+            int startX = 30;
+            int startY = 60;
+            int gap = 80;
+
+            // 1. Slot: Ekipman
+            slotMain = CreateSlot(0, startX, startY, "EKİPMAN");
+
+            // 2. Slot: Malzeme
+            slotMaterial = CreateSlot(1, startX + gap, startY, "MALZEME");
+
+            // 3. Slot: Şans
+            slotLucky = CreateSlot(2, startX + gap * 2, startY, "ŞANS");
+
+            // Ok İşareti (Label)
+            Label lblArrow = new Label
+            {
+                Text = "▼",
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI", 16, FontStyle.Bold),
+                AutoSize = true,
+                Location = new Point(startX + gap - 10, startY + 60)
+            };
+            this.Controls.Add(lblArrow);
+
+            // 4. Slot: Sonuç
+            slotResult = CreateSlot(3, startX + gap - 10, startY + 100, "SONUÇ");
+            slotResult.BackColor = Color.FromArgb(60, 60, 70); // Biraz farklı görünsün
+
+            // Bilgi Labelleri
+            lblInfo = new Label
+            {
+                Text = "Gerekli: -",
+                ForeColor = Color.Silver,
+                Location = new Point(20, 230),
+                AutoSize = true
+            };
+            this.Controls.Add(lblInfo);
+
+            lblChance = new Label
+            {
+                Text = "Şans: -",
+                ForeColor = Color.Gold,
+                Location = new Point(200, 230),
+                AutoSize = true,
+                Font = new Font("Segoe UI", 10, FontStyle.Bold)
+            };
+            this.Controls.Add(lblChance);
+
+            // Yükselt Butonu
+            btnUpgrade = new Button
+            {
+                Text = "YÜKSELT",
+                Size = new Size(100, 35),
+                Location = new Point(120, 255),
+                BackColor = Color.DarkRed,
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat
+            };
+            btnUpgrade.Click += BtnUpgrade_Click;
+            this.Controls.Add(btnUpgrade);
+        }
+
+        private UcItemSlot CreateSlot(int index, int x, int y, string placeholder)
+        {
+            Label lbl = new Label
+            {
+                Text = placeholder,
+                ForeColor = Color.Gray,
+                Font = new Font("Segoe UI", 7),
+                Location = new Point(x, y - 15),
+                AutoSize = true
+            };
+            this.Controls.Add(lbl);
+
+            UcItemSlot slot = new UcItemSlot(index);
+            slot.Location = new Point(x, y);
+            slot.AllowDrop = true;
+            slot.OnItemDropped += Slot_OnItemDropped;
+
+            // Sonuç slotundan ve diğer slotlardan tıklama ile alma/geri verme destekle
+            if (index ==3)
+            {
+                slot.MouseUp += ResultSlot_Click; // Tıklayınca çantaya al
+            }
+            else
+            {
+                // Diğer slotlarda sağ tık ile öğeyi geri alabilsin
+                slot.MouseUp += (s, e) =>
+                {
+                    if (e.Button == MouseButtons.Right)
+                    {
+                        ReturnSlotItem((UcItemSlot)s);
+                    }
+                };
+            }
+
+            this.Controls.Add(slot);
+            return slot;
+        }
+
+        // --- SÜRÜKLE BIRAK MANTIĞI ---
+        private void Slot_OnItemDropped(object sender, ItemInstance droppedItem)
+        {
+            UcItemSlot targetSlot = (UcItemSlot)sender;
+
+            // Eğer envanterden geliyorsa kabul et
+            if (droppedItem.Location != Enums.ItemLocation.Inventory) return;
+
+            // Slot Kuralları
+            if (targetSlot == slotMain)
+            {
+                if (!_upgManager.IsUpgradeable(droppedItem))
+                {
+                    MessageBox.Show("Bu eşya yükseltilemez! (Sadece +0 ile +8 arası Silah/Zırh)");
+                    return;
+                }
+                // Find an empty storage slot to reserve (avoid collisions)
+                int storageSlot = _invManager.FindFirstEmptyStorageSlot(droppedItem.OwnerID);
+                if (storageSlot == -1)
+                {
+                    MessageBox.Show("Depoda yer yok, demirciye koyamazsın.");
+                    return;
+                }
+                // Move item into storage at empty slot
+                _invManager.MoveItemToSlotAndLocation(droppedItem.InstanceID, Enums.ItemLocation.Storage, storageSlot);
+                var refreshed = _repo.GetItemAt(droppedItem.OwnerID, Enums.ItemLocation.Storage, storageSlot);
+                if (refreshed != null)
+                {
+                    _tempItems.Add(refreshed);
+                    _slotToStorage[targetSlot.SlotIndex] = storageSlot;
+                    SessionManager.ReserveItem(refreshed.InstanceID);
+                    slotMain.SetItem(refreshed);
+                    var parent = this.ParentForm as FormMain; if (parent != null) parent.RefreshStats();
+                }
+            }
+            else if (targetSlot == slotMaterial)
+            {
+                // Accept either specific upgrade material template or any item marked as Material type
+                if (droppedItem.TemplateID != UpgradeManager.UPGRADE_MATERIAL_ID && droppedItem.ItemType != Enums.ItemType.Material)
+                {
+                    MessageBox.Show("Bu slot sadece yükseltme malzemesi (Büyülü Metal) içindir.");
+                    return;
+                }
+                int storageSlot = _invManager.FindFirstEmptyStorageSlot(droppedItem.OwnerID);
+                if (storageSlot == -1) { MessageBox.Show("Depoda yer yok, malzemeyi koyamazsın."); return; }
+                _invManager.MoveItemToSlotAndLocation(droppedItem.InstanceID, Enums.ItemLocation.Storage, storageSlot);
+                var refreshed = _repo.GetItemAt(droppedItem.OwnerID, Enums.ItemLocation.Storage, storageSlot);
+                if (refreshed != null) { _tempItems.Add(refreshed); _slotToStorage[targetSlot.SlotIndex] = storageSlot; SessionManager.ReserveItem(refreshed.InstanceID); slotMaterial.SetItem(refreshed); var p2 = this.ParentForm as FormMain; if (p2 != null) p2.RefreshStats(); }
+            }
+            else if (targetSlot == slotLucky)
+            {
+                if (!_upgManager.IsLuckyItem(droppedItem.TemplateID))
+                {
+                    MessageBox.Show("Bu slot sadece şans arttırıcı eşyalar içindir.");
+                    return;
+                }
+                int storageSlot = _invManager.FindFirstEmptyStorageSlot(droppedItem.OwnerID);
+                if (storageSlot == -1) { MessageBox.Show("Depoda yer yok, şans eşyasını koyamazsın."); return; }
+                _invManager.MoveItemToSlotAndLocation(droppedItem.InstanceID, Enums.ItemLocation.Storage, storageSlot);
+                var refreshed = _repo.GetItemAt(droppedItem.OwnerID, Enums.ItemLocation.Storage, storageSlot);
+                if (refreshed != null) { _tempItems.Add(refreshed); _slotToStorage[targetSlot.SlotIndex] = storageSlot; SessionManager.ReserveItem(refreshed.InstanceID); slotLucky.SetItem(refreshed); var p3 = this.ParentForm as FormMain; if (p3 != null) p3.RefreshStats(); }
+            }
+
+            UpdateInfo();
+        }
+
+        private void UpdateInfo()
+        {
+            if (slotMain.Item == null)
+            {
+                lblInfo.Text = "Lütfen bir ekipman koyun.";
+                lblChance.Text = "";
+                return;
+            }
+
+            int reqCount = _upgManager.GetRequiredMaterialCount(slotMain.Item.UpgradeLevel);
+            int baseChance = _upgManager.GetBaseSuccessRate(slotMain.Item.UpgradeLevel);
+            int bonusChance = (slotLucky.Item != null) ? _upgManager.GetLuckyItemBonus(slotLucky.Item.TemplateID) : 0;
+            int totalChance = Math.Min(100, baseChance + bonusChance);
+
+            lblInfo.Text = $"Gerekli Malzeme: {reqCount} adet";
+
+            // Renkli Şans Gösterimi
+            lblChance.Text = $"Başarı Şansı: %{totalChance}";
+            if (totalChance < 50) lblChance.ForeColor = Color.Red;
+            else if (totalChance < 80) lblChance.ForeColor = Color.Orange;
+            else lblChance.ForeColor = Color.LightGreen;
+        }
+
+        // --- YÜKSELTME İŞLEMİ ---
+        private void BtnUpgrade_Click(object sender, EventArgs e)
+        {
+            if (slotMain.Item == null) return;
+            if (slotResult.Item != null)
+            {
+                MessageBox.Show("Önce sonuç slotundaki eşyayı almalısın!");
+                return;
+            }
+
+            int result = _upgManager.PerformUpgrade(slotMain.Item, slotMaterial.Item, slotLucky.Item);
+
+            if (result == -1)
+            {
+                MessageBox.Show("Yeterli yükseltme malzemen yok!");
+                return;
+            }
+
+            // Animasyon efekti yerine basit bir mesaj (İleride efekt eklenebilir)
+
+            if (result == 1) // BAŞARILI
+            {
+                MessageBox.Show("BAŞARILI! Eşya seviye atladı.");
+
+                // Main slotu boşalt, Result slotuna koy
+                // Not: PerformUpgrade zaten DB'de güncelledi ve nesneyi +1 yaptı.
+                slotResult.SetItem(slotMain.Item);
+                slotMain.SetItem(null);
+            }
+            else // BAŞARISIZ
+            {
+                MessageBox.Show("BAŞARISIZ... Eşya yok oldu.");
+                slotMain.SetItem(null);
+            }
+
+            // Malzemeleri UI'dan temizle (Çünkü Consume edildiler, eski referanslar geçersiz olabilir)
+            slotMaterial.SetItem(null);
+            slotLucky.SetItem(null);
+
+            // Ana formu güncelle (Envanterdeki malzemeler azaldı)
+            var p4 = this.ParentForm as FormMain; if (p4 != null) p4.RefreshStats();
+
+            // Commit temp items: the main slot was already processed (moved to result or consumed)
+            CommitTempItems();
+
+            UpdateInfo();
+        }
+
+        // --- SONUCU ALMA ---
+        private void ResultSlot_Click(object sender, MouseEventArgs e)
+        {
+            if (slotResult.Item == null) return;
+            
+            var item = slotResult.Item;
+            // find storage slot mapping for result if exists
+            int storageSlot = _slotToStorage.ContainsKey(slotResult.SlotIndex) ? _slotToStorage[slotResult.SlotIndex] : item.SlotIndex;
+            int empty = _repo.FindFirstEmptyInventorySlot(item.OwnerID);
+            if (empty == -1) empty =0;
+            _repo.MoveItemLocation(item.InstanceID, Enums.ItemLocation.Inventory, empty);
+            _repo.UpdateItemOwner(item.InstanceID, item.OwnerID);
+            SessionManager.UnreserveItem(item.InstanceID);
+            // cleanup mapping if present
+            if (_slotToStorage.ContainsKey(slotResult.SlotIndex)) _slotToStorage.Remove(slotResult.SlotIndex);
+            _tempItems.RemoveAll(x => x.InstanceID == item.InstanceID);
+            MessageBox.Show("Eşyayı aldın.");
+            slotResult.SetItem(null);
+            var p9 = this.ParentForm as FormMain; if (p9 != null) p9.RefreshStats();
+        }
+
+        private void RollbackTempItems()
+        {
+            // Move any tracked temp items back to player's inventory (first empty slot)
+            var hero = Core.SessionManager.CurrentCharacter;
+            if (hero == null) return;
+
+            // iterate over mapping so we move correct storage slots back
+            foreach (var kv in _slotToStorage.ToList())
+            {
+                int storageSlot = kv.Value;
+                var refreshed = _repo.GetItemAt(hero.CharacterID, Enums.ItemLocation.Storage, storageSlot);
+                if (refreshed == null) continue;
+                int empty = _repo.FindFirstEmptyInventorySlot(hero.CharacterID);
+                if (empty == -1) empty =0; // fallback
+                _repo.MoveItemLocation(refreshed.InstanceID, Enums.ItemLocation.Inventory, empty);
+                _repo.UpdateItemOwner(refreshed.InstanceID, hero.CharacterID);
+                SessionManager.UnreserveItem(refreshed.InstanceID);
+                _tempItems.RemoveAll(x => x.InstanceID == refreshed.InstanceID);
+            }
+
+            _slotToStorage.Clear();
+
+            // Clear UI slots
+            slotMain.SetItem(null);
+            slotMaterial.SetItem(null);
+            slotLucky.SetItem(null);
+            slotResult.SetItem(null);
+
+            var p5 = this.ParentForm as FormMain; if (p5 != null) p5.RefreshStats();
+        }
+
+        private void CommitTempItems()
+        {
+            // After successful upgrade (or explicit commit), unreserve and clear tracking
+            foreach (var it in _tempItems)
+            {
+                SessionManager.UnreserveItem(it.InstanceID);
+            }
+            _tempItems.Clear();
+            _slotToStorage.Clear();
+        }
+
+        private void ReturnSlotItem(UcItemSlot slot)
+        {
+            // If slot is empty nothing to do
+            if (slot == null || slot.Item == null) return;
+
+            var hero = Core.SessionManager.CurrentCharacter;
+            if (hero == null) return;
+
+            // Check mapping to storage slot
+            int storageSlot = -1;
+            if (_slotToStorage.ContainsKey(slot.SlotIndex)) storageSlot = _slotToStorage[slot.SlotIndex];
+            else storageSlot = slot.Item.Location == Enums.ItemLocation.Storage ? slot.Item.SlotIndex : -1;
+
+            if (storageSlot == -1)
+            {
+                // fallback: move the current item back by instance
+                int empty = _repo.FindFirstEmptyInventorySlot(hero.CharacterID);
+                if (empty == -1) empty =0;
+                _repo.MoveItemLocation(slot.Item.InstanceID, Enums.ItemLocation.Inventory, empty);
+                _repo.UpdateItemOwner(slot.Item.InstanceID, hero.CharacterID);
+                SessionManager.UnreserveItem(slot.Item.InstanceID);
+                slot.SetItem(null);
+                var p6 = this.ParentForm as FormMain; if (p6 != null) p6.RefreshStats();
+                return;
+            }
+
+            var refreshed = _repo.GetItemAt(hero.CharacterID, Enums.ItemLocation.Storage, storageSlot);
+            if (refreshed == null)
+            {
+                slot.SetItem(null);
+                var p7 = this.ParentForm as FormMain; if (p7 != null) p7.RefreshStats();
+                return;
+            }
+
+            int emptySlot = _repo.FindFirstEmptyInventorySlot(hero.CharacterID);
+            if (emptySlot == -1) emptySlot =0;
+            _repo.MoveItemLocation(refreshed.InstanceID, Enums.ItemLocation.Inventory, emptySlot);
+            _repo.UpdateItemOwner(refreshed.InstanceID, hero.CharacterID);
+            SessionManager.UnreserveItem(refreshed.InstanceID);
+
+            // Clean mappings and temp lists
+            _tempItems.RemoveAll(x => x.InstanceID == refreshed.InstanceID);
+            var key = _slotToStorage.FirstOrDefault(kv => kv.Value == storageSlot).Key;
+            if (_slotToStorage.ContainsKey(key)) _slotToStorage.Remove(key);
+
+            slot.SetItem(null);
+            var p8 = this.ParentForm as FormMain; if (p8 != null) p8.RefreshStats();
+        }
+    }
+}

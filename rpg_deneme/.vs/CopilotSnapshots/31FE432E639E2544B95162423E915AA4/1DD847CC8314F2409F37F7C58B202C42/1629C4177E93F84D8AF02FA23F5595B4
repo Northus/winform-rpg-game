@@ -1,0 +1,1621 @@
+﻿using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using rpg_deneme.Business;
+using rpg_deneme.Core;
+using rpg_deneme.Models;
+using rpg_deneme.Data;
+
+namespace rpg_deneme.UI.Controls;
+
+public class UcArena : UserControl
+{
+    private class HotbarSlot
+    {
+        public int Index { get; set; }
+
+        public long? InstanceID { get; set; }
+
+        public ItemInstance Item { get; set; }
+
+        public Image CachedImage { get; set; }
+    }
+
+    public class VisualEffect
+    {
+        public float X;
+
+        public float Y;
+
+        public string Text;
+
+        public Color Color;
+
+        public int LifeTime;
+
+        public bool IsText;
+
+        public int Size;
+
+        public int EffectType; // 0=Text, 1=Hit, 2=Death
+    }
+
+    public class Projectile
+    {
+        public float X;
+
+        public float Y;
+
+        public float DX;
+
+        public float DY;
+
+        public int Damage;
+
+        public int Size = 8;
+
+        public bool IsEnemy;
+
+        public Rectangle Bounds => new Rectangle((int)X, (int)Y, Size, Size);
+
+        public Projectile(float x, float y, float tx, float ty, int dmg, bool enemy)
+        {
+            X = x;
+            Y = y;
+            Damage = dmg;
+            IsEnemy = enemy;
+            float spd = (enemy ? 6f : 10f);
+            float dist = (float)Math.Sqrt(Math.Pow(tx - x, 2.0) + Math.Pow(ty - y, 2.0));
+            DX = (tx - x) / dist * spd;
+            DY = (ty - y) / dist * spd;
+        }
+
+        public void Move()
+        {
+            X += DX;
+            Y += DY;
+        }
+    }
+
+    private ArenaPanel _arena;
+
+    private Timer _gameLoop;
+
+    private Random _rnd = new Random();
+
+    private List<HotbarSlot> _hotbar = new List<HotbarSlot>();
+
+
+
+    private BattleEntity _player;
+
+    private List<BattleEntity> _enemies = new List<BattleEntity>();
+
+    private List<Projectile> _projectiles = new List<Projectile>();
+
+    private List<VisualEffect> _effects = new List<VisualEffect>();
+
+    private CharacterModel _hero;
+
+    private InventoryManager _invManager = new InventoryManager();
+
+    private Button _btnMap;
+
+    private bool _isTownMode = false;
+
+    private List<NpcEntity> _npcs = new List<NpcEntity>();
+
+    private bool _w;
+
+    private bool _a;
+
+    private bool _s;
+
+    private bool _d;
+
+    private Point _mousePos = Point.Empty;
+
+    private int _attackDelayMs = 1000;
+
+    private DateTime _lastAttackTime = DateTime.MinValue;
+
+    private int _manaCostPerHit = 0;
+
+    private bool _isBattleEnding = false;
+
+    private int _enemyAttackCooldown = 0;
+
+    private IContainer components = null;
+
+    // Optimization & Visuals
+    private Dictionary<Color, SolidBrush> _brushCache;
+    private Dictionary<Color, Pen> _penCache;
+    private int _shakeDuration = 0;
+    private int _shakeMagnitude = 0;
+    private int _currentWeaponUpgradeLevel = 0;
+    private Enums.ItemGrade _currentWeaponGrade = Enums.ItemGrade.Common;
+
+    public event EventHandler OnMapRequested;
+
+    public event EventHandler<bool> OnBattleEnded;
+
+    public event EventHandler OnStatsUpdated;
+
+    public event EventHandler<NpcEntity> OnNpcInteraction;
+
+    public UcArena()
+    {
+        DoubleBuffered = true;
+        // GDI+ Resource Caching
+        _brushCache = new Dictionary<Color, SolidBrush>();
+        _penCache = new Dictionary<Color, Pen>();
+
+        BackColor = Color.Black;
+        SetupArena();
+    }
+
+    private void SetupArena()
+    {
+        _arena = new ArenaPanel();
+        _arena.Dock = DockStyle.Fill;
+        _arena.BackColor = Color.FromArgb(45, 45, 48);
+        _arena.Paint += Arena_Paint;
+        _arena.MouseDown += Arena_MouseDown;
+        _arena.MouseMove += delegate (object? s, MouseEventArgs e)
+        {
+            _mousePos = e.Location;
+            UpdateTooltips(e.Location);
+        };
+        _arena.AllowDrop = true;
+        _arena.DragEnter += Arena_DragEnter;
+        _arena.DragDrop += Arena_DragDrop;
+        base.Controls.Add(_arena);
+        base.Click += delegate
+        {
+            Focus();
+        };
+        for (int i = 0; i < 5; i++)
+        {
+            _hotbar.Add(new HotbarSlot
+            {
+                Index = i
+            });
+        }
+    }
+
+    public void StartBattle(CharacterModel hero, BattleEntity enemyTemplate)
+    {
+        PrepareBattleCommon(hero);
+        BattleEntity singleEnemy = new BattleEntity
+        {
+            X = base.Width - 100,
+            Y = base.Height / 2 - 20,
+            Width = enemyTemplate.Width,
+            Height = enemyTemplate.Height,
+            Speed = enemyTemplate.Speed,
+            MaxHP = enemyTemplate.MaxHP,
+            CurrentHP = enemyTemplate.MaxHP,
+            MinDamage = enemyTemplate.MinDamage,
+            MaxDamage = enemyTemplate.MaxDamage,
+            Name = enemyTemplate.Name,
+            IsRanged = enemyTemplate.IsRanged,
+            AttackRange = enemyTemplate.AttackRange
+        };
+        if (_player != null)
+        {
+            Rectangle playerRect = new Rectangle((int)_player.X, (int)_player.Y, _player.Width, _player.Height);
+            Rectangle enemyRect = new Rectangle((int)singleEnemy.X, (int)singleEnemy.Y, singleEnemy.Width, singleEnemy.Height);
+            int tries = 0;
+            Random rnd = new Random();
+            while (enemyRect.IntersectsWith(playerRect) && tries < 20)
+            {
+                singleEnemy.X = base.Width - 100 - rnd.Next(0, 200);
+                singleEnemy.Y = 100 + rnd.Next(0, Math.Max(100, base.Height - 200));
+                enemyRect = new Rectangle((int)singleEnemy.X, (int)singleEnemy.Y, singleEnemy.Width, singleEnemy.Height);
+                tries++;
+            }
+        }
+        _enemies.Add(singleEnemy);
+        StartGameLoop();
+    }
+
+    public void StartSurvivalBattle(CharacterModel hero, List<EnemyModel> enemyTemplates)
+    {
+        PrepareBattleCommon(hero);
+        (int, int) arenaSize = GetArenaSize();
+        int w = arenaSize.Item1;
+        int h = arenaSize.Item2;
+        Random rnd = new Random();
+        foreach (EnemyModel tmpl in enemyTemplates)
+        {
+            int ex = w - 100 - rnd.Next(0, 200);
+            int ey = 100 + rnd.Next(0, Math.Max(100, h - 200));
+            bool isRangedUnit = tmpl.IsRanged || tmpl.Type == Enums.EnemyType.Ranged;
+            int attackRange = ((tmpl.AttackRange > 0) ? tmpl.AttackRange : (isRangedUnit ? 250 : 50));
+            BattleEntity newEnemy = new BattleEntity
+            {
+                X = ex,
+                Y = ey,
+                Width = tmpl.Width,
+                Height = tmpl.Height,
+                Speed = tmpl.Speed,
+                MaxHP = tmpl.MaxHP,
+                CurrentHP = tmpl.MaxHP,
+                MinDamage = tmpl.MinDamage,
+                MaxDamage = tmpl.MaxDamage,
+                Name = tmpl.Name,
+                IsRanged = isRangedUnit,
+                AttackRange = attackRange
+            };
+            if (_player != null)
+            {
+                Rectangle playerRect = new Rectangle((int)_player.X, (int)_player.Y, _player.Width, _player.Height);
+                Rectangle eRect = new Rectangle((int)newEnemy.X, (int)newEnemy.Y, newEnemy.Width, newEnemy.Height);
+                int tries = 0;
+                while ((eRect.IntersectsWith(playerRect) || _enemies.Any((BattleEntity en) => en.Bounds.IntersectsWith(eRect))) && tries < 30)
+                {
+                    ex = w - 100 - rnd.Next(0, 300);
+                    ey = 80 + rnd.Next(0, Math.Max(100, h - 160));
+                    newEnemy.X = ex;
+                    newEnemy.Y = ey;
+                    eRect = new Rectangle((int)newEnemy.X, (int)newEnemy.Y, newEnemy.Width, newEnemy.Height);
+                    tries++;
+                }
+            }
+            _enemies.Add(newEnemy);
+        }
+        StartGameLoop();
+    }
+
+    public void StartTown(CharacterModel hero)
+    {
+        _isBattleEnding = false;
+        _hero = hero;
+        LoadHotbarFromSession();
+        _isTownMode = true;
+        _projectiles.Clear();
+        _enemies.Clear();
+        _w = (_a = (_s = (_d = false)));
+        InitTownEntities();
+        UpdateTownLayout();
+        (int, int) arenaSize = GetArenaSize();
+        int w = arenaSize.Item1;
+        int h = arenaSize.Item2;
+        int maxHp = StatManager.CalculateMaxHP(_hero.VIT, _hero.Level);
+        _player = new BattleEntity
+        {
+            X = w / 2 - 16,
+            Y = h / 2 - 16,
+            Width = 32,
+            Height = 32,
+            Speed = 5f,
+            MaxHP = maxHp,
+            CurrentHP = _hero.HP,
+            MinDamage = 0,
+            MaxDamage = 0,
+            Defense = 0
+        };
+        StartGameLoop();
+    }
+
+    private void PrepareBattleCommon(CharacterModel hero)
+    {
+        _hero = hero;
+        LoadHotbarFromSession();
+        _projectiles.Clear();
+        _enemies.Clear();
+        _w = (_a = (_s = (_d = false)));
+        _isBattleEnding = false;
+        _isTownMode = false;
+        int maxHp = StatManager.CalculateMaxHP(_hero.VIT, _hero.Level);
+        int currentHP = _hero.HP;
+        if (currentHP > maxHp)
+        {
+            currentHP = maxHp;
+        }
+        if (currentHP < 0)
+        {
+            currentHP = 0;
+        }
+        (int, int) arenaSize = GetArenaSize();
+        int arenaW = arenaSize.Item1;
+        int arenaH = arenaSize.Item2;
+        int startX = Math.Max(0, arenaW / 2 - 16);
+        int startY = Math.Max(0, arenaH / 2 - 16);
+        _player = new BattleEntity
+        {
+            X = startX,
+            Y = startY,
+            Width = 32,
+            Height = 32,
+            Speed = 5f,
+            MaxHP = maxHp,
+            CurrentHP = currentHP,
+            MinDamage = 0,
+            MaxDamage = 0,
+            Defense = 0
+        };
+        _hero.HP = currentHP;
+        RecalculatePlayerStats();
+        if (_player.CurrentHP > _player.MaxHP)
+        {
+            _player.CurrentHP = _player.MaxHP;
+            _hero.HP = _player.MaxHP;
+        }
+    }
+
+    private int _manaRegenAmount = 0;
+    private int _manaRegenTimer = 0;
+
+    public void RecalculatePlayerStats()
+    {
+        if (_hero != null && _player != null)
+        {
+            List<ItemInstance> inventory = _invManager.GetInventory(_hero.CharacterID);
+            ItemInstance equippedWeapon = inventory.FirstOrDefault((ItemInstance x) => x.Location == Enums.ItemLocation.Equipment && x.ItemType == Enums.ItemType.Weapon);
+            _currentWeaponUpgradeLevel = (equippedWeapon != null) ? equippedWeapon.UpgradeLevel : 0;
+            _currentWeaponGrade = (equippedWeapon != null) ? equippedWeapon.Grade : Enums.ItemGrade.Common;
+            List<ItemInstance> equippedItems = inventory.Where((ItemInstance x) => x.Location == Enums.ItemLocation.Equipment).ToList();
+
+            (int, int) calculatedDamage = ((_hero.Class == 3) ? StatManager.CalculateMagicalDamage(_hero, equippedWeapon) : StatManager.CalculatePhysicalDamage(_hero, equippedWeapon));
+            int calculatedDefense = StatManager.CalculateTotalDefense(_hero, equippedItems);
+            float attackSpeed = StatManager.CalculateAttackSpeed(_hero, equippedWeapon, equippedItems);
+
+            _attackDelayMs = (int)(1000f / attackSpeed);
+            _manaCostPerHit = StatManager.CalculateAttackManaCost(_hero);
+            _player.MinDamage = calculatedDamage.Item1;
+            _player.MaxDamage = calculatedDamage.Item2;
+            _player.Defense = calculatedDefense;
+
+            // Mana Regen
+            _manaRegenAmount = StatManager.GetTotalAttributeValue(equippedItems, Enums.ItemAttributeType.ManaRegen);
+
+            // Sync with NotificationManager (Buffs)
+            if (_manaRegenAmount > 0)
+            {
+                NotificationManager.AddBuff("Mana Yenileme", "ManaRegen", _manaRegenAmount);
+            }
+            else
+            {
+                // Remove functionality not implemented in AddBuff? 
+                // I should add RemoveBuff or Clear mechanism.
+                // For now, I'll clear all buffs and re-add in a cleaner system, 
+                // but since RecalculatePlayerStats is rare, I can just clear specific ones if I had ID.
+                // Let's implement ClearBuffs then Re-add in NotificationManager? 
+                // Actually NotificationManager.AddBuff handles update.
+                // To remove, I need to know if it's 0.
+                // I'll update NotificationManager to handle removing if value is 0 later or now?
+                // I'll leave it as is, assuming _activeBuffs persists. 
+                // I should probably CLEAR all buffs when recalculating to be safe.
+            }
+
+            // Actually, best to Clear and Re-Add during Recalc.
+            NotificationManager.ClearBuffs();
+            if (_manaRegenAmount > 0) NotificationManager.AddBuff($"Mana Regen: {_manaRegenAmount}/3sn", "ManaRegen", _manaRegenAmount);
+
+            // HP Sync
+            int newMaxHP = StatManager.CalculateTotalMaxHP(_hero, equippedItems);
+            int oldMaxHP = _player.MaxHP;
+            _player.MaxHP = newMaxHP;
+            if (oldMaxHP > 0 && newMaxHP != oldMaxHP && _player.CurrentHP > newMaxHP)
+            {
+                _player.CurrentHP = newMaxHP;
+                _hero.HP = newMaxHP;
+            }
+            if (_player.CurrentHP > _player.MaxHP)
+            {
+                _player.CurrentHP = _player.MaxHP;
+                _hero.HP = _player.MaxHP;
+            }
+
+            // Mana Sync
+            int newMaxMana = StatManager.CalculateTotalMaxMana(_hero, equippedItems);
+            _player.MaxMana = newMaxMana;
+            // Ensure Hero Mana is within bounds
+            if (_hero.Mana > newMaxMana) _hero.Mana = newMaxMana;
+            _player.CurrentMana = _hero.Mana;
+        }
+    }
+
+    private void StartGameLoop()
+    {
+        if (_gameLoop == null)
+        {
+            _gameLoop = new Timer
+            {
+                Interval = 16
+            };
+            _gameLoop.Tick += GameTick;
+        }
+        _gameLoop.Start();
+        Focus();
+    }
+
+    private void GameTick(object sender, EventArgs e)
+    {
+        if (_player == null)
+        {
+            return;
+        }
+        if (_isBattleEnding)
+        {
+            UpdateEffects();
+            _arena.Invalidate();
+            return;
+        }
+        if (_hero != null)
+        {
+            // Sync HP/Mana from SessionManager (in case externally modified by potion/etc)
+            if (SessionManager.CurrentCharacter != null && SessionManager.CurrentCharacter.CharacterID == _hero.CharacterID)
+            {
+                _hero.HP = SessionManager.CurrentCharacter.HP;
+                _hero.Mana = SessionManager.CurrentCharacter.Mana;
+            }
+            
+      // Keep CurrentHP in sync but respect MaxHP
+ _player.CurrentHP = _hero.HP;
+
+            if (_player.CurrentHP > _player.MaxHP)
+            {
+          _player.CurrentHP = _player.MaxHP;
+    _hero.HP = _player.MaxHP;
+  }
+
+         // Keep CurrentMana in sync
+            _player.CurrentMana = _hero.Mana;
+            if (_player.CurrentMana > _player.MaxMana)
+            {
+  _player.CurrentMana = _player.MaxMana;
+       _hero.Mana = _player.MaxMana;
+            }
+
+            // Mana Regen
+            _manaRegenTimer++;
+            if (_manaRegenTimer >= 60)
+            {
+       _manaRegenTimer = 0;
+if (_manaRegenAmount > 0 && _player.CurrentMana < _player.MaxMana)
+         {
+         _player.CurrentMana += _manaRegenAmount;
+       if (_player.CurrentMana > _player.MaxMana) _player.CurrentMana = _player.MaxMana;
+   _hero.Mana = _player.CurrentMana;
+         this.OnStatsUpdated?.Invoke(this, EventArgs.Empty);
+    }
+        }
+        }
+        // Update Screen Shake
+        if (_shakeDuration > 0)
+        {
+            _shakeDuration--;
+        }
+
+        NotificationManager.Update();
+
+        UpdatePlayer();
+        UpdateProjectiles();
+        UpdateEffects();
+        // UpdateHotbarState(); // REMOVED: Caused performance freeze due to DB calls in loop
+        if (!_isTownMode)
+        {
+            UpdateEnemies();
+        }
+        _arena.Invalidate();
+    }
+
+    private void UpdateEnemies()
+    {
+        if (_enemyAttackCooldown > 0)
+        {
+            _enemyAttackCooldown--;
+        }
+        int aliveCount = 0;
+        for (int i = 0; i < _enemies.Count; i++)
+        {
+            BattleEntity enemy = _enemies[i];
+            if (enemy.CurrentHP <= 0)
+            {
+                continue;
+            }
+            aliveCount++;
+            float distToPlayer = Distance(enemy.Center.X, enemy.Center.Y, _player.Center.X, _player.Center.Y);
+            if (distToPlayer < 0.001f)
+            {
+                distToPlayer = 0.001f;
+            }
+            float dx = _player.X - enemy.X;
+            float dy = _player.Y - enemy.Y;
+            float dirX = dx / distToPlayer;
+            float dirY = dy / distToPlayer;
+            float sepX = 0f;
+            float sepY = 0f;
+            int neighbors = 0;
+            float separationRadius = Math.Max(48f, (float)Math.Max(enemy.Width, enemy.Height) * 0.8f);
+            foreach (BattleEntity other in _enemies)
+            {
+                if (other == enemy || other.CurrentHP <= 0)
+                {
+                    continue;
+                }
+                float distToOther = Distance(enemy.Center.X, enemy.Center.Y, other.Center.X, other.Center.Y);
+                if (distToOther < separationRadius)
+                {
+                    if (distToOther < 0.001f)
+                    {
+                        distToOther = 0.001f;
+                    }
+                    float overlapFactor = (separationRadius - distToOther) / separationRadius;
+                    sepX += (enemy.X - other.X) / distToOther * overlapFactor;
+                    sepY += (enemy.Y - other.Y) / distToOther * overlapFactor;
+                    neighbors++;
+                }
+            }
+            if (neighbors > 0)
+            {
+                sepX /= (float)neighbors;
+                sepY /= (float)neighbors;
+            }
+            float desiredRange = ((enemy.AttackRange > 0) ? ((float)enemy.AttackRange) : (enemy.IsRanged ? 250f : 40f));
+            float moveX = dirX;
+            float moveY = dirY;
+            if (enemy.IsRanged)
+            {
+                if (enemy.DecisionCooldown > 0)
+                {
+                    enemy.DecisionCooldown--;
+                }
+                if (enemy.DecisionCooldown <= 0)
+                {
+                    if (distToPlayer > desiredRange)
+                    {
+                        enemy.AIState = 2;
+                    }
+                    else if (distToPlayer <= desiredRange * 0.5f)
+                    {
+                        enemy.AIState = ((_rnd.NextDouble() < 0.7) ? 1 : 0);
+                    }
+                    else
+                    {
+                        enemy.AIState = 1;
+                    }
+                    enemy.StrafeSign = ((_rnd.Next(0, 2) != 0) ? 1 : (-1));
+                    enemy.DecisionCooldown = _rnd.Next(18, 48);
+                }
+                switch (enemy.AIState)
+                {
+                    case 0:
+                        moveX = (0f - dirX) * 0.9f + sepX * 1.2f;
+                        moveY = (0f - dirY) * 0.9f + sepY * 1.2f;
+                        break;
+                    case 1:
+                        {
+                            float perpX = (0f - dirY) * (float)enemy.StrafeSign;
+                            float perpY = dirX * (float)enemy.StrafeSign;
+                            moveX = perpX * 0.6f + sepX * 0.8f;
+                            moveY = perpY * 0.6f + sepY * 0.8f;
+                            if (distToPlayer > desiredRange * 0.9f && _rnd.NextDouble() < 0.25)
+                            {
+                                moveX = dirX * 0.6f + sepX * 0.4f;
+                                moveY = dirY * 0.6f + sepY * 0.4f;
+                            }
+                            break;
+                        }
+                    default:
+                        moveX = dirX + sepX * 0.6f;
+                        moveY = dirY + sepY * 0.6f;
+                        break;
+                }
+            }
+            else if (distToPlayer <= desiredRange)
+            {
+                moveX = sepX * 1f;
+                moveY = sepY * 1f;
+            }
+            else
+            {
+                moveX = dirX + sepX * 0.9f;
+                moveY = dirY + sepY * 0.9f;
+            }
+            float mag = (float)Math.Sqrt(moveX * moveX + moveY * moveY);
+            if (mag < 0.001f)
+            {
+                moveX = 0f;
+                moveY = 0f;
+            }
+            else
+            {
+                moveX /= mag;
+                moveY /= mag;
+            }
+            enemy.VX = Lerp(enemy.VX, moveX * enemy.Speed, 0.18f);
+            enemy.VY = Lerp(enemy.VY, moveY * enemy.Speed, 0.18f);
+            float minDistance = (float)(enemy.Width + _player.Width) / 2f + 2f;
+            if (!enemy.IsRanged)
+            {
+                minDistance = Math.Max(minDistance, desiredRange);
+            }
+            float proposedX = enemy.X + enemy.VX;
+            float proposedY = enemy.Y + enemy.VY;
+            float proposedDist = Distance(proposedX + (float)enemy.Width / 2f, proposedY + (float)enemy.Height / 2f, _player.Center.X, _player.Center.Y);
+            if (proposedDist < minDistance && distToPlayer <= minDistance)
+            {
+                enemy.VX = (0f - dirX) * enemy.Speed * 0.3f;
+                enemy.VY = (0f - dirY) * enemy.Speed * 0.3f;
+            }
+            else if (proposedDist < minDistance)
+            {
+                float allowedDist = distToPlayer - minDistance;
+                if (allowedDist > 0f)
+                {
+                    float scale = Math.Min(1f, allowedDist / (float)Math.Sqrt(enemy.VX * enemy.VX + enemy.VY * enemy.VY));
+                    enemy.VX *= scale;
+                    enemy.VY *= scale;
+                }
+                else
+                {
+                    enemy.VX = (0f - dirX) * enemy.Speed * 0.3f;
+                    enemy.VY = (0f - dirY) * enemy.Speed * 0.3f;
+                }
+            }
+            enemy.X += enemy.VX;
+            enemy.Y += enemy.VY;
+
+            // Enemy Anim State
+            if (Math.Abs(enemy.VX) > 0.1f || Math.Abs(enemy.VY) > 0.1f)
+            {
+                enemy.IsMoving = true;
+                enemy.AnimTimer += 0.15f;
+                enemy.FacingRight = (enemy.VX > 0);
+            }
+            else
+            {
+                enemy.IsMoving = false;
+                enemy.AnimTimer += 0.05f;
+            }
+            if (enemy.VisualAttackTimer > 0) enemy.VisualAttackTimer -= 1f;
+
+            if (_player != null && enemy.Bounds.IntersectsWith(_player.Bounds))
+            {
+                float overlapX = enemy.X + (float)enemy.Width / 2f - (_player.X + (float)_player.Width / 2f);
+                float overlapY = enemy.Y + (float)enemy.Height / 2f - (_player.Y + (float)_player.Height / 2f);
+                float overlapDist = (float)Math.Sqrt(overlapX * overlapX + overlapY * overlapY);
+                if (overlapDist < 0.001f)
+                {
+                    overlapX = 1f;
+                    overlapY = 0f;
+                    overlapDist = 1f;
+                }
+                float pushDist = minDistance - overlapDist + 2f;
+                if (pushDist > 0f)
+                {
+                    enemy.X += overlapX / overlapDist * pushDist;
+                    enemy.Y += overlapY / overlapDist * pushDist;
+                }
+            }
+            if (enemy.IsRanged && distToPlayer <= desiredRange + 50f)
+            {
+                double fireChance = 0.008;
+                if (enemy.AIState == 1)
+                {
+                    fireChance = 0.02;
+                }
+                else if (enemy.AIState == 2)
+                {
+                    fireChance = 0.025;
+                }
+                if (_rnd.NextDouble() < fireChance)
+                {
+                    Projectile proj = new Projectile(enemy.Center.X, enemy.Center.Y, _player.Center.X, _player.Center.Y, _rnd.Next(enemy.MinDamage, enemy.MaxDamage + 1), enemy: true);
+                    _projectiles.Add(proj);
+                    enemy.VisualAttackTimer = 10f;
+                }
+            }
+            else if (!enemy.IsRanged && distToPlayer <= desiredRange && _enemyAttackCooldown <= 0)
+            {
+                enemy.VisualAttackTimer = 10f;
+                ApplyDamageToPlayer(_rnd.Next(enemy.MinDamage, enemy.MaxDamage + 1));
+                _enemyAttackCooldown = 60;
+                _player.X += dirX * 30f;
+                _player.Y += dirY * 30f;
+                ClampEntityPosition(_player);
+            }
+            ClampEntityPosition(enemy);
+        }
+
+        _enemies.RemoveAll(x => x.CurrentHP <= 0);
+
+        if (aliveCount == 0 && !_isBattleEnding)
+        {
+            StartBattleEndSequence(victory: true);
+        }
+    }
+
+    private static float Lerp(float a, float b, float t)
+    {
+        return a + (b - a) * t;
+    }
+
+    private void UpdatePlayer()
+    {
+        float proposedX = _player.X;
+        float proposedY = _player.Y;
+        if (_w)
+        {
+            proposedY -= _player.Speed;
+        }
+        if (_s)
+        {
+            proposedY += _player.Speed;
+        }
+        if (_a)
+        {
+            proposedX -= _player.Speed;
+        }
+        if (_d)
+        {
+            proposedX += _player.Speed;
+            _player.FacingRight = true;
+        }
+        else if (_a)
+        {
+            _player.FacingRight = false;
+        }
+
+        // Animation State
+        if (_w || _a || _s || _d)
+        {
+            _player.IsMoving = true;
+            _player.AnimTimer += 0.2f;
+        }
+        else
+        {
+            _player.IsMoving = false;
+            // Slowly reset anim timer or keep it for idle breathing
+            _player.AnimTimer += 0.05f;
+        }
+
+        if (_player.VisualAttackTimer > 0) _player.VisualAttackTimer -= 1f;
+
+        Rectangle proposedRect = new Rectangle((int)proposedX, (int)proposedY, _player.Width, _player.Height);
+        bool collides = false;
+        if (_isTownMode)
+        {
+            foreach (NpcEntity npc in _npcs)
+            {
+                Rectangle npcRect = new Rectangle((int)npc.X, (int)npc.Y, npc.Width, npc.Height);
+                if (proposedRect.IntersectsWith(npcRect))
+                {
+                    collides = true;
+                    break;
+                }
+            }
+        }
+        else
+        {
+            float minDistance = 0f;
+            foreach (BattleEntity en in _enemies)
+            {
+                if (en.CurrentHP > 0)
+                {
+                    minDistance = (float)(_player.Width + en.Width) / 2f + 1f;
+                    float proposedCenterX = proposedX + (float)_player.Width / 2f;
+                    float proposedCenterY = proposedY + (float)_player.Height / 2f;
+                    float enemyCenterX = en.X + (float)en.Width / 2f;
+                    float enemyCenterY = en.Y + (float)en.Height / 2f;
+                    float distToEnemy = Distance(proposedCenterX, proposedCenterY, enemyCenterX, enemyCenterY);
+                    if (distToEnemy < minDistance)
+                    {
+                        collides = true;
+                        break;
+                    }
+                    Rectangle enemyRect = new Rectangle((int)en.X, (int)en.Y, en.Width, en.Height);
+                    if (proposedRect.IntersectsWith(enemyRect))
+                    {
+                        collides = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if (!collides)
+        {
+            _player.X = proposedX;
+            _player.Y = proposedY;
+            ClampEntityPosition(_player);
+        }
+    }
+
+    private void DrawProceduralCharacter(Graphics g, BattleEntity ent, Color color, int classType, int weaponLevel = 0, Enums.ItemGrade grade = Enums.ItemGrade.Common)
+    {
+        // Basic Animation Params
+        float bounce = 0f;
+        float armSwing = 0f;
+        float legSwing = 0f;
+
+        if (ent.IsMoving)
+        {
+            bounce = (float)Math.Sin(ent.AnimTimer) * 2f;
+            legSwing = (float)Math.Sin(ent.AnimTimer * 2f) * 6f;
+            armSwing = (float)Math.Cos(ent.AnimTimer * 2f) * 8f;
+        }
+
+        float x = ent.X;
+        float y = ent.Y + bounce;
+        float w = ent.Width;
+        float h = ent.Height;
+        float cx = x + w / 2f;
+        float cy = y + h / 2f;
+
+        // Flip for direction
+        int dir = ent.FacingRight ? 1 : -1;
+
+        // 1. Shadow
+        if (classType != 0)
+        {
+            g.FillEllipse(GetCachedBrush(Color.FromArgb(100, 0, 0, 0)), x + 5, ent.Y + h - 4, w - 10, 6);
+        }
+
+        // 2. Legs (Simple Lines)
+        // Ensure Pen exists
+        Pen legPen = GetCachedPen(color);
+        g.DrawLine(legPen, cx - 4, cy + 10, cx - 4 - legSwing, cy + 22);
+        g.DrawLine(legPen, cx + 4, cy + 10, cx + 4 + legSwing, cy + 22);
+
+        // 3. Body
+        if (classType == 1) // Warrior: Broad shoulders
+        {
+            // Rounded rectangle for armor
+            g.FillRectangle(GetCachedBrush(color), x, y + 5, w, h - 20);
+            g.DrawRectangle(GetCachedPen(Color.Black), x, y + 5, w, h - 20);
+            // Belt
+            g.FillRectangle(GetCachedBrush(Color.SaddleBrown), x, y + 15, w, 4);
+        }
+        else if (classType == 2) // Rogue: Slim/Stealthy
+        {
+            // Slimmer Triangle-ish body
+            PointF[] bodyPoints = { new PointF(cx - 6, y + 20), new PointF(cx + 6, y + 20), new PointF(cx + 10, y + 6), new PointF(cx - 10, y + 6) };
+            g.FillPolygon(GetCachedBrush(color), bodyPoints);
+            // Cape/Cloak
+            g.FillRectangle(GetCachedBrush(Color.FromArgb(80, 0, 0, 0)), x + 5, y + 5, w - 10, h - 15);
+        }
+        else // Mage & Default
+        {
+            g.FillEllipse(GetCachedBrush(color), x + 2, y + 5, w - 4, h - 15);
+            g.DrawEllipse(GetCachedPen(Color.Black), x + 2, y + 5, w - 4, h - 15);
+        }
+
+        // 4. Head
+        Color skinColor = Color.Bisque; // Default skin
+        if (classType == 0) skinColor = Color.RosyBrown; // Orcish/Enemy
+
+        g.FillEllipse(GetCachedBrush(skinColor), cx - 9, y - 8, 18, 18);
+
+        // Helmets / Hats
+        if (classType == 1) // Warrior Helmet
+        {
+            // Grey Helmet top
+            g.FillPie(GetCachedBrush(Color.SlateGray), cx - 10, y - 9, 20, 20, 180, 180);
+            // Horns?
+            // g.DrawLine(GetCachedPen(Color.White), cx - 8, y - 5, cx - 14, y - 10);
+            // g.DrawLine(GetCachedPen(Color.White), cx + 8, y - 5, cx + 14, y - 10);
+        }
+        else if (classType == 2) // Rogue Hood
+        {
+            // Dark Hood triangle
+            PointF[] hoodPoints = { new PointF(cx - 10, y - 5), new PointF(cx + 10, y - 5), new PointF(cx, y - 16) };
+            g.FillPolygon(GetCachedBrush(Color.FromArgb(50, 50, 50)), hoodPoints);
+        }
+        else if (classType == 3) // Mage Hat (Wizard)
+        {
+            // Pointy Hat
+            PointF[] hatPoints = { new PointF(cx - 12, y - 6), new PointF(cx + 12, y - 6), new PointF(cx, y - 25) };
+            g.FillPolygon(GetCachedBrush(Color.Indigo), hatPoints);
+        }
+        // Eyes (Directional)
+        float eyeOff = (ent.FacingRight ? 4f : -4f);
+        g.FillRectangle(GetCachedBrush(Color.Black), cx + eyeOff - 2, y - 4, 2, 2);
+
+        // 5. Weapon / Attack Animation
+        // Always draw weapon for player, or if attacking for enemy
+        if (classType > 0 || ent.VisualAttackTimer > 0)
+        {
+            float attackRot = 0f;
+            if (ent.VisualAttackTimer > 0)
+            {
+                // Attack Swing (0 to 1 scaling)
+                float t = 1f - (ent.VisualAttackTimer / 10f); // 0.0 to 1.0
+                attackRot = t * 90f * dir; // Swing 90 degrees
+                // Start High
+                attackRot -= 45f * dir;
+            }
+            else
+            {
+                // Idle walk sway
+                attackRot = armSwing * 0.5f;
+            }
+
+            // Weapon Pivot Point
+            float wx = cx + (12 * dir);
+            float wy = cy;
+
+            // Color based on Level (for weapon body)
+            Color weaponColor = Color.Silver;
+
+            // Aura based on Grade
+            Color auraColor = Color.Empty;
+
+            if (classType > 0)
+            {
+                // Weapon Body Color (Keep existing logic as requested)
+                if (weaponLevel >= 9) { weaponColor = Color.Cyan; }
+                else if (weaponLevel >= 7) { weaponColor = Color.Gold; }
+                else if (weaponLevel >= 4) { weaponColor = Color.LightSlateGray; }
+                else { weaponColor = Color.RosyBrown; }
+
+                // Aura Color based on Grade
+                switch (grade)
+                {
+                    case Enums.ItemGrade.Rare: auraColor = Color.FromArgb(100, 30, 144, 255); break; // Blue
+                    case Enums.ItemGrade.Epic: auraColor = Color.FromArgb(100, 138, 43, 226); break; // Purple
+                    case Enums.ItemGrade.Legendary: auraColor = Color.FromArgb(100, 255, 215, 0); break; // Gold
+                    default: auraColor = Color.Empty; break;
+                }
+            }
+
+            // Draw Based on Class
+            GraphicsState state = g.Save();
+            g.TranslateTransform(wx, wy);
+            g.RotateTransform(attackRot);
+
+            // Reset scale if needed or just draw locally
+            // Correction for Left facing: Rotate behaves differently? 
+            // If dir is -1, we want to mirror? GDI+ rotation is always CW.
+            // If facing left, we might want to scale(-1, 1).
+            if (dir == -1) g.ScaleTransform(-1, 1);
+
+            // Aura (Glow)
+            if (auraColor != Color.Empty && classType != 0)
+            {
+                g.FillEllipse(GetCachedBrush(auraColor), -5, -25, 10, 50);
+            }
+
+            // Special Effect for +9 (Upgrade Level 9)
+            if (weaponLevel >= 9 && classType > 0)
+            {
+                // Small sparkles or a thin white ring
+                // Use a simple time-based pulse if GameTickCount isn't available, or simple random jitter
+                // Assuming we can use a static counter or Time
+                float pulse = (float)Math.Sin(DateTime.Now.Ticks / 1000000.0) * 2f;
+                using (Pen pGlow = new Pen(Color.FromArgb(150, 255, 255, 255), 1))
+                {
+                    g.DrawEllipse(pGlow, -6 - pulse, -26 - pulse, 12 + (pulse * 2), 52 + (pulse * 2));
+                }
+            }
+
+            if (classType == 1) // Warrior (Sword)
+            {
+                g.FillRectangle(GetCachedBrush(weaponColor), 0, -20, 4, 30);
+                g.FillRectangle(GetCachedBrush(Color.Brown), -4, 0, 12, 2); // Guard
+                g.FillRectangle(GetCachedBrush(Color.Brown), 0, 10, 4, 6); // Hilt
+            }
+            else if (classType == 2) // Rogue (Dagger)
+            {
+                // Dagger is smaller, held reversed sometimes but simple here
+                g.FillRectangle(GetCachedBrush(weaponColor), 0, -10, 3, 16);
+            }
+            else if (classType == 3) // Mage (Staff)
+            {
+                g.FillRectangle(GetCachedBrush(Color.SaddleBrown), -2, -25, 4, 50);
+                g.FillEllipse(GetCachedBrush(weaponLevel >= 9 ? Color.Cyan : Color.Red), -6, -29, 12, 12); // Gem
+            }
+            else // Enemy
+            {
+                if (color == Color.Purple) // Ranged Enemy
+                {
+                    // Bow-like
+                    g.DrawArc(GetCachedPen(Color.Brown), -5, -15, 10, 30, 90, 180);
+                    g.DrawLine(GetCachedPen(Color.White), 0, -15, 0, 15);
+                }
+                else // Melee Enemy
+                {
+                    // Club
+                    g.FillRectangle(GetCachedBrush(Color.DarkGray), -2, -15, 6, 25);
+                }
+            }
+
+            g.Restore(state);
+        }
+    }
+
+    private void DrawProceduralNPC(Graphics g, NpcEntity npc)
+    {
+        float x = npc.X;
+        float y = npc.Y;
+        float w = npc.Width;
+        float h = npc.Height;
+
+        // Common Shadow
+        g.FillEllipse(GetCachedBrush(Color.FromArgb(60, 0, 0, 0)), x - 5, y + h - 8, w + 10, 10);
+
+        switch (npc.Type)
+        {
+            case Enums.NpcType.Merchant:
+                // Wooden Stall
+                g.FillRectangle(GetCachedBrush(Color.Sienna), x - 10, y + h / 2, w + 20, h / 2);
+                g.DrawRectangle(GetCachedPen(Color.Black), x - 10, y + h / 2, w + 20, h / 2);
+                // Roof Poles
+                g.FillRectangle(GetCachedBrush(Color.BurlyWood), x - 5, y, 6, h / 2);
+                g.FillRectangle(GetCachedBrush(Color.BurlyWood), x + w - 1, y, 6, h / 2);
+                // Striped Roof
+                PointF[] roof = { new PointF(x - 15, y), new PointF(x + w + 15, y), new PointF(x + w + 5, y - 20), new PointF(x - 5, y - 20) };
+                g.FillPolygon(GetCachedBrush(Color.Crimson), roof);
+                break;
+
+            case Enums.NpcType.Teleporter:
+                // Magical Gate (Floor Rune)
+                g.DrawEllipse(GetCachedPen(Color.Cyan), x - 5, y + h - 15, w + 10, 15);
+                g.DrawEllipse(GetCachedPen(Color.DeepSkyBlue), x, y + h - 12, w, 9);
+                // Floating Particles
+                float tick = (float)(DateTime.Now.Ticks / 10000 % 100) / 100f;
+                float py = y + h - 20 - (tick * 40f); // Moving up
+                g.FillEllipse(GetCachedBrush(Color.AliceBlue), x + w / 2 - 2, py, 4, 4);
+                break;
+
+            case Enums.NpcType.StorageKeeper:
+                // Large Chest
+                g.FillRectangle(GetCachedBrush(Color.SaddleBrown), x, y + 10, w, h - 10);
+                g.DrawRectangle(GetCachedPen(Color.Black), x, y + 10, w, h - 10);
+                // Gold Trim
+                g.FillRectangle(GetCachedBrush(Color.Gold), x + 5, y + 10, 5, h - 10);
+                g.FillRectangle(GetCachedBrush(Color.Gold), x + w - 10, y + 10, 5, h - 10);
+                g.FillRectangle(GetCachedBrush(Color.Gold), x + w / 2 - 5, y + 20, 10, 8); // Lock
+                break;
+
+            case Enums.NpcType.BlackSmith:
+                // Anvil
+                g.FillRectangle(GetCachedBrush(Color.DimGray), x + 5, y + h / 2, w - 10, h / 2);
+                g.FillRectangle(GetCachedBrush(Color.Gray), x, y + h / 2 - 5, w, 10);
+                // Hammer Icon
+                using (Pen p = new Pen(Color.SaddleBrown, 4))
+                {
+                    g.DrawLine(p, x + w, y + h - 5, x + w + 10, y + h / 2 - 10);
+                }
+                g.FillRectangle(GetCachedBrush(Color.DarkGray), x + w + 5, y + h / 2 - 15, 12, 10); // Hammer head
+                break;
+
+            case Enums.NpcType.ArenaMaster:
+                // Banner Post
+                g.FillRectangle(GetCachedBrush(Color.DarkSlateGray), x + w / 2 - 3, y - 10, 6, h + 10);
+                // Banner Cloth
+                PointF[] banner = { new PointF(x + w / 2, y - 5), new PointF(x + w + 10, y - 5), new PointF(x + w + 10, y + 20), new PointF(x + w / 2 + 5, y + 15), new PointF(x + w / 2, y + 20) };
+                g.FillPolygon(GetCachedBrush(Color.DarkRed), banner);
+                break;
+
+            default:
+                g.FillRectangle(GetCachedBrush(npc.Color), x, y, w, h);
+                g.DrawRectangle(GetCachedPen(Color.White), x, y, w, h);
+                break;
+        }
+
+        // Name
+        using Font font = new Font("Segoe UI", 8f, FontStyle.Bold);
+        SizeF size = g.MeasureString(npc.Name, font);
+        float tx = x + (w - size.Width) / 2f;
+        float ty = y - 25f; // Higher up
+
+        g.DrawString(npc.Name, font, GetCachedBrush(Color.Black), tx + 1, ty + 1);
+        g.DrawString(npc.Name, font, GetCachedBrush(Color.White), tx, ty);
+    }
+
+    // Cached GDI+ Objects for Performance
+    private readonly Font _enemyNameFont = new Font("Segoe UI", 7f, FontStyle.Regular);
+    private readonly StringFormat _centerFormat = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+
+    private void DrawEnemy(Graphics g, BattleEntity en)
+    {
+        if (en.CurrentHP <= 0) return;
+        if (float.IsNaN(en.X) || float.IsInfinity(en.X)) en.X = 0f;
+        if (float.IsNaN(en.Y) || float.IsInfinity(en.Y)) en.Y = 0f;
+
+        // Simple culling
+        int pads = 50;
+        if (en.X < -pads || en.X > _arena.Width + pads || en.Y < -pads || en.Y > _arena.Height + pads) return;
+
+        Color bodyColor = (en.IsRanged ? Color.Purple : Color.Crimson);
+
+        // Use Procedural Draw
+        DrawProceduralCharacter(g, en, bodyColor, 0); // 0 = Enemy Class
+
+        // Modern HP Bar
+        DrawModernBar(g, en.X, en.Y - 12f, en.Width, 6f, en.CurrentHP, en.MaxHP, Color.OrangeRed, Color.DarkRed);
+
+        if (string.IsNullOrEmpty(en.Name)) return;
+
+        // Name tag using Cached Font/Format to avoid creating garbage every frame
+        g.DrawString(en.Name, _enemyNameFont, GetCachedBrush(Color.White), new RectangleF(en.X, en.Y, en.Width, en.Height), _centerFormat);
+    }
+
+    private void DrawModernBar(Graphics g, float x, float y, float w, float h, int val, int max, Color front, Color back)
+    {
+        float pct = Math.Max(0, Math.Min(1, (float)val / (float)max));
+        // Background
+        g.FillRectangle(GetCachedBrush(back), x, y, w, h);
+        // Foreground with minimal shading if desired or just flat
+        if (pct > 0)
+        {
+            g.FillRectangle(GetCachedBrush(front), x, y, w * pct, h);
+        }
+        // Optional border
+        g.DrawRectangle(GetCachedPen(Color.Black), x, y, w, h);
+    }
+
+    private SolidBrush GetCachedBrush(Color c)
+    {
+        if (!_brushCache.TryGetValue(c, out var b))
+        {
+            b = new SolidBrush(c);
+            _brushCache[c] = b;
+        }
+        return b;
+    }
+
+    private Pen GetCachedPen(Color c)
+    {
+        if (!_penCache.TryGetValue(c, out var p))
+        {
+            p = new Pen(c);
+            _penCache[c] = p;
+        }
+        return p;
+    }
+
+    public void StartShake(int duration, int magnitude)
+    {
+        _shakeDuration = duration;
+        _shakeMagnitude = magnitude;
+    }
+
+    private void UpdateProjectiles()
+    {
+        for (int i = _projectiles.Count - 1; i >= 0; i--)
+        {
+            Projectile proj = _projectiles[i];
+            proj.Move();
+            if (proj.X < 0f || proj.X > (float)_arena.Width || proj.Y < 0f || proj.Y > (float)_arena.Height)
+            {
+                _projectiles.RemoveAt(i);
+            }
+            else
+            {
+                bool hit = false;
+                if (proj.IsEnemy)
+                {
+                    if (_player.Bounds.IntersectsWith(proj.Bounds))
+                    {
+                        ApplyDamageToPlayer(proj.Damage);
+                        hit = true;
+                    }
+                }
+                else
+                {
+                    foreach (BattleEntity en in _enemies)
+                    {
+                        if (en.CurrentHP > 0 && proj.Bounds.IntersectsWith(en.Bounds))
+                        {
+                            ApplyDamageToEnemy(en, proj.Damage);
+                            hit = true;
+                            break;
+                        }
+                    }
+                }
+                if (hit)
+                {
+                    _projectiles.RemoveAt(i);
+                }
+            }
+        }
+    }
+
+    private void Arena_Paint(object sender, PaintEventArgs e)
+    {
+        Graphics g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.InterpolationMode = InterpolationMode.NearestNeighbor;
+
+        var (w, h) = GetArenaSize();
+
+        // Apply screen shake
+        int shakeOffsetX = 0;
+        int shakeOffsetY = 0;
+        if (_shakeDuration > 0)
+        {
+            shakeOffsetX = _rnd.Next(-_shakeMagnitude, _shakeMagnitude + 1);
+            shakeOffsetY = _rnd.Next(-_shakeMagnitude, _shakeMagnitude + 1);
+            _shakeDuration--;
+        }
+        g.TranslateTransform(shakeOffsetX, shakeOffsetY);
+
+        // Draw Background
+        DrawBackground(g);
+
+        // Draw NPCs
+        if (_isTownMode)
+        {
+            foreach (NpcEntity npc in _npcs)
+            {
+                DrawProceduralNPC(g, npc);
+            }
+        }
+
+        // Draw Player
+        if (_player != null)
+        {
+            // Fix: Use _currentWeaponUpgradeLevel instead of _hero.WeaponLevel
+            DrawProceduralCharacter(g, _player, Color.Blue, _hero.Class, _currentWeaponUpgradeLevel, _currentWeaponGrade);
+        }
+
+        // Draw Enemies
+        foreach (BattleEntity en in _enemies)
+        {
+            DrawEnemy(g, en);
+        }
+
+        // Draw Projectiles
+        foreach (Projectile proj in _projectiles)
+        {
+            // Fix: Projectile has no Color property. Use Red for Enemy, Cyan for Player
+            Color pColor = proj.IsEnemy ? Color.Red : Color.Cyan;
+            g.FillEllipse(GetCachedBrush(pColor), proj.X - proj.Size / 2, proj.Y - proj.Size / 2, proj.Size, proj.Size);
+        }
+
+        // Draw Visual Effects
+        for (int i = _effects.Count - 1; i >= 0; i--)
+        {
+            VisualEffect effect = _effects[i];
+            int alpha = Math.Min(255, effect.LifeTime * 5);
+            if (alpha < 0) alpha = 0;
+
+            if (effect.IsText)
+            {
+                using (SolidBrush b = new SolidBrush(Color.FromArgb(alpha, effect.Color)))
+                using (Font f = new Font("Segoe UI", 14f, FontStyle.Bold))
+                {
+                    // Draw Text with outline for better visibility?
+                    // Simple bold text for now.
+                    g.DrawString(effect.Text, f, b, effect.X, effect.Y);
+                }
+            }
+            else if (effect.EffectType == 3) // Potion Ring Effect
+            {
+                // Expanding Ring
+                // LifeTime likely starts at 60.
+                float maxLife = 60f;
+                float progress = 1f - (Math.Max(0, effect.LifeTime) / maxLife);
+                float ringSize = effect.Size + (progress * 60f);
+                int ringAlpha = (int)(255 * (1f - progress));
+                if (ringAlpha < 0) ringAlpha = 0;
+                if (ringAlpha > 255) ringAlpha = 255;
+
+                using (Pen p = new Pen(Color.FromArgb(ringAlpha, effect.Color), 4))
+                {
+                    g.DrawEllipse(p, effect.X - ringSize / 2, effect.Y - ringSize / 2, ringSize, ringSize);
+                }
+            }
+            else
+            {
+                using (SolidBrush b = new SolidBrush(Color.FromArgb(alpha, effect.Color)))
+                {
+                    g.FillEllipse(b, effect.X, effect.Y, effect.Size, effect.Size);
+                }
+            }
+
+            effect.LifeTime--;
+            if (effect.LifeTime <= 0)
+            {
+                _effects.RemoveAt(i);
+            }
+        }
+
+        // Draw UI
+        if (_player != null)
+        {
+            // HP Bar over player
+            int hpW = 32;
+            int hpH = 4;
+            int hpY = (int)_player.Y - 8;
+            g.FillRectangle(Brushes.Black, _player.X, hpY, hpW, hpH);
+            float hpPct = (float)_player.CurrentHP / (float)_player.MaxHP;
+            g.FillRectangle(Brushes.Crimson, _player.X, hpY, (int)(hpW * hpPct), hpH);
+        }
+
+        // Draw Hotbar
+        DrawHotbar(g);
+
+        if (_showResults)
+        {
+            // Background
+            g.FillRectangle(new SolidBrush(Color.FromArgb(220, 0, 0, 0)), 0, 0, w, h);
+
+            // Title
+            string title = (_player.CurrentHP > 0) ? "ZAFER!" : "YENİLGİ...";
+            Color titleColor = (_player.CurrentHP > 0) ? Color.Gold : Color.Red;
+            using (Font tFont = new Font("Segoe UI", 36f, FontStyle.Bold))
+            {
+                SizeF tSz = g.MeasureString(title, tFont);
+                float tx = (w - tSz.Width) / 2;
+                float ty = h * 0.2f;
+                g.DrawString(title, tFont, new SolidBrush(titleColor), tx, ty);
+
+                // Content
+                using (Font cFont = new Font("Segoe UI", 12f))
+                {
+                    SizeF cSz = g.MeasureString(_resultMessage, cFont, w - 100);
+                    float cx = (w - cSz.Width) / 2;
+                    float cy = ty + tSz.Height + 20;
+                    g.DrawString(_resultMessage, cFont, Brushes.White, new RectangleF(cx, cy, cSz.Width, cSz.Height));
+
+                    // Button
+                    int btnW = 200;
+                    int btnH = 50;
+                    int btnX = (int)((w - btnW) / 2);
+                    int btnY = (int)(cy + cSz.Height + 30);
+
+                    // Buttons
+                    int padding = 20;
+
+                    using (Font bFont = new Font("Segoe UI", 14f, FontStyle.Bold))
+                    {
+                        if (_onSecondary == null)
+                        {
+                            // Single Button
+                            btnX = (int)((w - btnW) / 2);
+                            _primaryBtnRect = new Rectangle(btnX, btnY, btnW, btnH);
+
+                            g.FillRectangle(Brushes.DarkOrange, _primaryBtnRect);
+                            g.DrawRectangle(Pens.White, _primaryBtnRect);
+
+                            SizeF bSz = g.MeasureString(_primaryBtnText, bFont);
+                            g.DrawString(_primaryBtnText, bFont, Brushes.White, btnX + (btnW - bSz.Width) / 2, btnY + (btnH - bSz.Height) / 2);
+                        }
+                        else
+                        {
+                            // Two Buttons
+                            int totalW = (btnW * 2) + padding;
+                            int startX = (w - totalW) / 2;
+
+                            _primaryBtnRect = new Rectangle(startX, btnY, btnW, btnH);
+                            _secondaryBtnRect = new Rectangle(startX + btnW + padding, btnY, btnW, btnH);
+
+                            // Primary
+                            g.FillRectangle(Brushes.DarkOrange, _primaryBtnRect);
+                            g.DrawRectangle(Pens.White, _primaryBtnRect);
+                            SizeF pSz = g.MeasureString(_primaryBtnText, bFont);
+                            g.DrawString(_primaryBtnText, bFont, Brushes.White, _primaryBtnRect.X + (btnW - pSz.Width) / 2, _primaryBtnRect.Y + (btnH - pSz.Height) / 2);
+
+                            // Secondary
+                            g.FillRectangle(Brushes.IndianRed, _secondaryBtnRect);
+                            g.DrawRectangle(Pens.White, _secondaryBtnRect);
+                            SizeF sSz = g.MeasureString(_secondaryBtnText, bFont);
+                            g.DrawString(_secondaryBtnText, bFont, Brushes.White, _secondaryBtnRect.X + (btnW - sSz.Width) / 2, _secondaryBtnRect.Y + (btnH - sSz.Height) / 2);
+                        }
+                    }
+                }
+            }
+        }
+
+
+        // Draw HUD (Buffs & Notifications)
+        DrawBuffs(g);
+        DrawNotifications(g);
+    }
+
+    private void DrawBuffs(Graphics g)
+    {
+        var buffs = NotificationManager.GetBuffs();
+        int startX = 20;
+        int startY = 20;
+
+        for (int i = 0; i < buffs.Count; i++)
+        {
+            var buff = buffs[i];
+            int boxSize = 32;
+            Rectangle rect = new Rectangle(startX, startY + (i * (boxSize + 5)), boxSize, boxSize);
+
+            // Draw Box
+            g.FillRectangle(new SolidBrush(Color.FromArgb(100, 0, 0, 0)), rect);
+            g.DrawRectangle(Pens.Gray, rect);
+
+            // Icon
+            if (buff.IconType == "ManaRegen")
+            {
+                // Draw simple blue drop
+                g.FillEllipse(Brushes.DodgerBlue, rect.X + 8, rect.Y + 8, 16, 16);
+            }
+            else if (buff.IconType == "Success")
+            {
+                g.FillEllipse(Brushes.LimeGreen, rect.X + 8, rect.Y + 8, 16, 16);
+            }
+            // Removed text drawing as requested
+        }
+    }
+
+    private void DrawNotifications(Graphics g)
+    {
+        var notifs = NotificationManager.GetNotifications();
+        int startX = 20;
+        int startY = 200;
+
+        for (int i = 0; i < notifs.Count; i++)
+        {
+            var notif = notifs[i];
+            int alpha = 255;
+            if (notif.Duration < 30) alpha = (int)((notif.Duration / 30f) * 255);
+            if (alpha < 0) alpha = 0;
+            if (alpha > 255) alpha = 255;
+
+            using (Font f = new Font("Segoe UI", 10f, FontStyle.Bold))
+            {
+                SizeF sz = g.MeasureString(notif.Message, f);
+                Rectangle bgRect = new Rectangle(startX - 2, startY + (i * 25) - 2, (int)sz.Width + 4, (int)sz.Height + 4);
+
+                using (Brush bgBrush = new SolidBrush(Color.FromArgb((int)(alpha * 0.7f), 0, 0, 0)))
+                {
+                    g.FillRectangle(bgBrush, bgRect);
+                }
+
+                using (Brush brush = new SolidBrush(Color.FromArgb(alpha, notif.Color)))
+                {
+                    g.DrawString(notif.Message, f, brush, startX, startY + (i * 25));
+                }
+            }
+        }
+    }
+
+    private List<ItemInstance> _cachedEquipment;
+    private DateTime _lastEquipFetchTime;
+
+    private List<ItemInstance> GetEquipment()
+    {
+        if (_cachedEquipment == null || (DateTime.Now - _lastEquipFetchTime).TotalSeconds > 1)
+        {
+            var inv = _invManager.GetInventory(_hero.CharacterID);
+            _cachedEquipment = inv.FindAll(x => x.Location == Enums.ItemLocation.Equipment);
+            _lastEquipFetchTime = DateTime.Now;
+        }
+        return _cachedEquipment;
+    }
+
+    private void Arena_MouseDown(object sender, MouseEventArgs e)
+    {
+        if (_showResults)
+        {
+            if (_primaryBtnRect.Contains(e.Location))
+            {
+                _showResults = false;
+                _onPrimary?.Invoke();
+            }
+            else if (_onSecondary != null && _secondaryBtnRect.Contains(e.Location))
+            {
+                _showResults = false;
+                _onSecondary?.Invoke();
+            }
+            return;
+        }
+
+        if (_hero == null || _player == null || _isBattleEnding)
+        {
+            return;
+        }
+        for (int i = 0; i < _hotbar.Count; i++)
+        {
+            if (GetHotbarSlotRect(i).Contains(e.Location))
+            {
+                if (e.Button == MouseButtons.Left)
+                {
+                    _hotbar[i].InstanceID = null;
+                    _hotbar[i].Item = null;
+                    _hotbar[i].CachedImage = null;
+                    SaveHotbarToSession();
+                }
+                else if (e.Button == MouseButtons.Right)
+                {
+                    UseHotbarSlot(i);
+                }
+                return;
+            }
+        }
+        if (e.Button == MouseButtons.Left)
+        {
+ if ((DateTime.Now - _lastAttackTime).TotalMilliseconds < (double)_attackDelayMs)
+        {
+            return;
+        }
+            if (!_isTownMode)
+   {
+    if (_hero.Mana < _manaCostPerHit)
+     {
+    return;
+          }
+   _hero.Mana -= _manaCostPerHit;
+     }
+    _lastAttackTime = DateTime.Now;
+            _player.VisualAttackTimer = 10f;
+            this.OnStatsUpdated?.Invoke(this, EventArgs.Empty);
+
+       // Fetch Equip & Calculate Crit
+            var equipment = GetEquipment();
+ int critChance = StatManager.GetTotalAttributeValue(equipment, Enums.ItemAttributeType.CriticalChance);
+
+      if (_hero.Class == 3)
+   {
+     // Mage Projectile logic
+            int rawDmg = _rnd.Next(_player.MinDamage, _player.MaxDamage + 1);
+       bool isCrit = _rnd.Next(100) < critChance;
+        if (isCrit) rawDmg = (int)(rawDmg * 1.5);
+
+                _projectiles.Add(new Projectile(_player.Center.X, _player.Center.Y, e.X, e.Y, rawDmg, enemy: false)
+    {
+      IsCritical = isCrit
+        });
+    }
+          else
+         {
+    _effects.Add(new VisualEffect
+     {
+        X = e.X - 10,
+              Y = e.Y - 10,
+    Color = Color.WhiteSmoke,
+     Size = 20,
+     LifeTime = 10
+     });
+      if (!_isTownMode)
+   {
+          BattleEntity target = null;
+     foreach (BattleEntity en in _enemies)
+           {
+              if (en.CurrentHP > 0 && en.Bounds.Contains(e.Location))
+             {
+            target = en;
+           break;
+   }
+            }
+          if (target == null)
+                {
+   foreach (BattleEntity en2 in _enemies)
+         {
+      if (en2.CurrentHP <= 0 || !(Distance(_player.Center.X, _player.Center.Y, en2.Center.X, en2.Center.Y) < 80f))
+      {
+                  continue;
+   }
+          target = en2;
+      break;
+         }
+               }
+   if (target != null && Distance(_player.Center.X, _player.Center.Y, target.Center.X, target.Center.Y) <= 80f)
+ {
+    // Melee Logic with Crit
+              int dmg = _rnd.Next(_player.MinDamage, _player.MaxDamage + 1);
+     bool isCrit = _rnd.Next(100) < critChance;
+      if (isCrit) dmg = (int)(dmg * 1.5);
+          ApplyDamageToEnemy(target, dmg, isCrit);
+      }
+        }
+         }
+     }
+      if (!_isTownMode || e.Button != MouseButtons.Right)
+     {
+            return;
+        }
+        foreach (NpcEntity npc in _npcs)
+        {
+  if (Distance(e.X, e.Y, npc.Center.X, npc.Center.Y) < 60f && Distance(_player.Center.X, _player.Center.Y, npc.Center.X, npc.Center.Y) < 150f)
+    {
+     this.OnNpcInteraction?.Invoke(this, npc);
+       break;
+            }
+        }
+    }

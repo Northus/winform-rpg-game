@@ -1,0 +1,98 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using rpg_deneme.Core;
+using rpg_deneme.Data;
+using rpg_deneme.Models;
+
+namespace rpg_deneme.Business
+{
+    public class LootManager
+    {
+        private LootRepository _repo = new LootRepository();
+        private InventoryManager _invManager = new InventoryManager(); // Eşyayı envantere eklemek için
+        private Random _rnd = new Random();
+
+        public List<string> ProcessLoot(int characterId, int enemyId)
+        {
+            List<string> droppedItemsLog = new List<string>();
+            var lootTable = _repo.GetLootTableForEnemy(enemyId);
+
+            foreach (var entry in lootTable)
+            {
+                double roll = _rnd.NextDouble() * 100;
+                if (roll <= entry.DropRate)
+                {
+                    // 1. TİP KONTROLÜ (Grade Fix)
+                    // Eğer eşya stacklenebilir ise (İksir vb.) Grade her zaman Consumable(0) olmalı.
+                    // Ayrıca UpgradeLevel + basılamaz, 0 olmalı.
+                    Enums.ItemGrade grade = Enums.ItemGrade.Consumable;
+                    int upgradeLevel = 0;
+
+                    if (!entry.IsStackable && entry.ItemType != Enums.ItemType.Consumable)
+                    {
+                        // Sadece stacklenmeyen ekipmanlar Grade ve Upgrade alabilir
+                        grade = CalculateGrade();
+                        upgradeLevel = CalculateUpgradeLevel();
+                    }
+
+                    var newItem = new ItemInstance
+                    {
+                        TemplateID = entry.TemplateID,
+                        OwnerID = characterId,
+                        Count = 1,
+                        Grade = grade,            // Düzeltilmiş Grade
+                        UpgradeLevel = upgradeLevel, // Düzeltilmiş Upgrade
+                        Location = Enums.ItemLocation.Inventory,
+                        IsStackable = entry.IsStackable
+                    };
+
+                    // 2. ENVANTERE EKLEME (MaxStack bilgisiyle)
+                    // InventoryManager'a MaxStack bilgisini de göndermemiz lazım ama 
+                    // şimdilik AddItemToInventory metodu içinde tekrar template çekmemek için
+                    // newItem.IsStackable özelliğini kullanacağız.
+
+                    bool added = _invManager.AddItemToInventory(newItem);
+
+                    if (added)
+                    {
+                        string qualityText = grade == Enums.ItemGrade.Consumable || grade == Enums.ItemGrade.Common ? "" : $"[{grade}] ";
+                        string upgradeText = upgradeLevel > 0 ? $"+{upgradeLevel} " : "";
+                        droppedItemsLog.Add($"{qualityText}{upgradeText}Eşya (ID:{entry.TemplateID})");
+                    }
+                    else
+                    {
+                        droppedItemsLog.Add("Çanta dolu! Eşya kayboldu.");
+                    }
+                }
+            }
+            return droppedItemsLog;
+        }
+
+        private Enums.ItemGrade CalculateGrade()
+        {
+            int roll = _rnd.Next(1, 101); // 1-100
+
+            if (roll <= 10) return Enums.ItemGrade.Legendary; // %1
+            if (roll <= 20) return Enums.ItemGrade.Epic;      // %4 (1-5 arası)
+            if (roll <= 40) return Enums.ItemGrade.Rare;     // %10
+            return Enums.ItemGrade.Common;                   // %60 (Geri kalan)
+        }
+
+        private int CalculateUpgradeLevel()
+        {
+            // Sadece Ekipmanlar + alabilir (Bunu ItemType kontrolüyle yapmalıyız ama şimdilik şans verelim)
+            // İksire + basılsa da etkisi olmaz :)
+
+            int roll = _rnd.Next(1, 101);
+
+            if (roll <= 5) return 4;   // %5 şansla +4
+            if (roll <= 10) return 3;  // %5 şansla +3
+            if (roll <= 20) return 2;  // %10 şansla +2
+            if (roll <= 40) return 1;  // %20 şansla +1
+            return 0;                  // %60 şansla +0
+        }
+    }
+}

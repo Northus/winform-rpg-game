@@ -1,0 +1,57 @@
+using System;
+using SkiaSharp;
+
+namespace rpg_deneme.UI.Controls;
+
+public partial class UcArena
+{
+    private int _fpsFrameCount;
+    private long _fpsLastTick;
+    private int _fps;
+
+    private int _tickCount;
+    private long _tickLastTick;
+    private int _tps;
+
+    // Reusable paint for FPS display
+    private readonly SKPaint _fpsPaint = new()
+    {
+        Color = SKColors.White,
+        TextSize = 14,
+        IsAntialias = false,
+        FakeBoldText = true
+    };
+
+    private void Fps_OnFrameRendered()
+    {
+        long now = Environment.TickCount64;
+        if (_fpsLastTick == 0) _fpsLastTick = now;
+
+        _fpsFrameCount++;
+        if (now - _fpsLastTick >= 1000)
+        {
+            _fps = _fpsFrameCount;
+            _fpsFrameCount = 0;
+            _fpsLastTick = now;
+        }
+    }
+
+    private void Fps_OnGameTick()
+    {
+        long now = Environment.TickCount64;
+        if (_tickLastTick == 0) _tickLastTick = now;
+
+        _tickCount++;
+        if (now - _tickLastTick >= 1000)
+        {
+            _tps = _tickCount;
+            _tickCount = 0;
+            _tickLastTick = now;
+        }
+    }
+
+    private void Fps_Draw(SKCanvas canvas)
+    {
+        canvas.DrawText($"FPS: {_fps} | TPS: {_tps}", 10, 20, _fpsPaint);
+    }
+}

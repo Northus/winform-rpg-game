@@ -1,0 +1,332 @@
+﻿using rpg_deneme.Business;
+using rpg_deneme.Models;
+using rpg_deneme.UI.Controls; // UcArena burada
+using System;
+using System.Drawing;
+using System.Windows.Forms;
+
+namespace rpg_deneme.UI.Windows
+{
+    public partial class UcExploration : UserControl
+    {
+        private ZoneModel _currentZone;
+
+        // UI Elemanları (Designer'da eklemişsin gibi kodla ekliyorum)
+        private Label lblTitle;
+        private Label lblInfo;
+        private Button btnExplore;
+        private UcArena ucArena; // Arena kontrolümüz
+        private Panel pnlInfo;   // Bilgi ve Butonun durduğu panel
+
+        private ZoneManager _zoneManager = new ZoneManager();
+        private LootManager _lootManager = new LootManager();
+        private LevelManager _levelManager = new LevelManager();
+        private EnemyModel _currentEnemy;
+        private Data.CharacterRepository _charRepo = new Data.CharacterRepository();
+
+        public event EventHandler OnReturnRequested;
+
+        private Button btnBack; // Geri butonu
+
+        public GameProgressBar pbZoneProgress { get; private set; }
+
+        public UcExploration(ZoneModel zone)
+        {
+            InitializeComponent();
+            _currentZone = zone;
+            this.Dock = DockStyle.Fill; // Tüm alanı kapla
+            this.BackColor = Color.FromArgb(40, 40, 40);
+
+            SetupUI();
+        }
+        private bool _isBossFight = false;
+
+        private void SetupUI()
+        {
+            // 1. Üst Bilgi Paneli (Başlık, Buton vs.)
+            pnlInfo = new Panel { Dock = DockStyle.Top, Height = 300, BackColor = Color.Transparent };
+            var hero = Core.SessionManager.CurrentCharacter;
+            int displayVal = hero.ZoneProgress;
+
+            lblTitle = new Label
+            {
+                Text = _currentZone.Name,
+                Font = new Font("Segoe UI", 24, FontStyle.Bold),
+                ForeColor = Color.White,
+                AutoSize = true,
+                Location = new Point(20, 20),
+                Parent = pnlInfo
+            };
+
+            lblInfo = new Label
+            {
+                Text = _currentZone.Description,
+                Font = new Font("Segoe UI", 12),
+                ForeColor = Color.LightGray,
+                AutoSize = true,
+                Location = new Point(20, 80),
+                Parent = pnlInfo
+            };
+
+            btnExplore = new Button
+            {
+                Text = "KEŞFET",
+                Size = new Size(200, 60),
+                Location = new Point(20, 170),
+                BackColor = Color.DarkOrange,
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 14, FontStyle.Bold),
+                Cursor = Cursors.Hand,
+                Parent = pnlInfo
+            };
+            btnExplore.Click += BtnExplore_Click;
+
+            if (_currentZone.ZoneID < hero.MaxUnlockedZoneID)
+            {
+                displayVal = 100;
+            }
+
+            pbZoneProgress = new GameProgressBar
+            {
+                Maximum = 100,
+                Value = displayVal,
+                Parent = pnlInfo,
+                Location = new Point(20, 130),
+                Size = new Size(200, 25),
+                BarColor = displayVal >= 100 ? Color.LimeGreen : Color.Gold,
+                ShowPercentage = true
+            };
+            this.Controls.Add(pnlInfo);
+
+            btnBack = new Button
+            {
+                Text = "X", // Veya "GERİ"
+                Size = new Size(40, 40),
+                Location = new Point(this.Width - 60, 20), // Sağ üst köşe (Anchor lazım)
+                Anchor = AnchorStyles.Top | AnchorStyles.Right, // Pencere büyürse sağa yaslı kalsın
+                BackColor = Color.IndianRed,
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 12, FontStyle.Bold),
+                Cursor = Cursors.Hand,
+                Parent = pnlInfo // ÖNEMLİ: Info paneline ekliyoruz ki savaşta gizlensin
+            };
+            btnBack.Click += (s, e) => OnReturnRequested?.Invoke(this, EventArgs.Empty);
+
+            // 2. Arena (Başlangıçta Gizli Değil ama pasif durabilir veya görünmez)
+            // Strateji: Arena hep altta dursun (Fill), Info paneli üstte (Top).
+            // Savaş başlayınca Info panelini gizleriz.
+
+            ucArena = new UcArena();
+            ucArena.Dock = DockStyle.Fill;
+            ucArena.Visible = false; // Başta gizli
+
+            // A. Savaş Bitiş Eventi (Kazanma/Kaybetme)
+            ucArena.OnBattleEnded += UcArena_OnBattleEnded;
+
+            // B. Anlık Stat Güncelleme Eventi (Can Barı güncellemesi için)
+            ucArena.OnStatsUpdated += (s, args) =>
+            {
+                // Ana Forma İlet
+                if (this.ParentForm is FormMain mainForm)
+                {
+                    mainForm.UpdateBars();
+                }
+            };
+
+            // Kontrolü ekle
+            this.Controls.Add(ucArena);
+
+            // Sıralama: Arena arkada, Panel önde
+            ucArena.BringToFront();
+        }
+
+        private void BtnExplore_Click(object sender, EventArgs e)
+        {
+            // RNG (Rastgele Olay)
+            Random rnd = new Random();
+            int roll = rnd.Next(1, 100);
+
+            if (roll <= 100) // Test için %100 savaş yaptım
+            {
+                StartCombat();
+            }
+            else
+            {
+                MessageBox.Show("Boş geçti...");
+            }
+        }
+        private int _currentEnemyID;
+        private void StartCombat()
+        {
+            pnlInfo.Visible = false;
+            ucArena.Visible = true;
+            ucArena.Focus();
+            var hero = Core.SessionManager.CurrentCharacter;
+
+            // BOSS KONTROLÜ: 
+            // Eğer ilerleme 100 ise VE bu bölge henüz tamamlanmamışsa (Unlock edilmemişse) Boss gelir.
+            // Eğer eski bölgeyi oynuyorsak (Progress 100 olsa bile) Boss gelmez, grind yaparız.
+            bool spawnBoss = (hero.ZoneProgress >= 100 && hero.CurrentZoneID == hero.MaxUnlockedZoneID);
+
+            _isBossFight = spawnBoss; // Durumu kaydet
+
+            // Manager'a spawnBoss parametresini gönderiyoruz
+            var enemy = _zoneManager.GetEnemyForZone(_currentZone.ZoneID, spawnBoss);
+            
+
+            if (enemy == null)
+            {
+                MessageBox.Show("Düşman bulunamadı!");
+                ucArena.Visible = false;
+                pnlInfo.Visible = true;
+                return;
+            }
+
+            _currentEnemy = enemy;
+            _currentEnemyID = enemy.EnemyID;
+
+            if (_isBossFight)
+            {
+                MessageBox.Show("DİKKAT! BOSS GELİYOR!", "BOSS SAVAŞI", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            _currentEnemyID = enemy.EnemyID;
+            ucArena.StartBattle(hero, enemy);
+            // Savaş bitince çalışacak olayı bağla (Eğer constructor'da bağlamadıysan)
+            ucArena.OnBattleEnded -= UcArena_OnBattleEnded; // Çoklu bağlamayı önlemek için önce çıkar
+            ucArena.OnBattleEnded += UcArena_OnBattleEnded;
+        }
+
+        // Savaş Bitiş Eventi (UcArena_OnBattleEnded)
+        private void UcArena_OnBattleEnded(object sender, bool victory)
+        {
+            // Savaş bitti
+            ucArena.Visible = false;
+            pnlInfo.Visible = true;
+            var hero = Core.SessionManager.CurrentCharacter;
+
+            if (victory)
+            {
+                var lootLogs = _lootManager.ProcessLoot(hero.CharacterID, _currentEnemyID);
+
+                string lootMsg = "";
+                if (lootLogs.Count > 0)
+                {
+                    lootMsg = "\n\nGANİMETLER:\n" + string.Join("\n", lootLogs);
+                }
+                else
+                {
+                    lootMsg = "\n\n(Düşmandan eşya düşmedi)";
+                }
+                // BOSS MU KESTİK?
+                if (_isBossFight)
+                {
+                    string msg = _zoneManager.AddZoneProgress(hero, 10);
+                    MessageBox.Show("TEBRİKLER! BOSS'U YENDİNİZ! BÖLGE TAMAMLANDI!");
+
+                    // Bölgeyi tamamla (Sonraki bölgeyi aç)
+                    _zoneManager.CompleteZone(hero);
+
+                    if (pbZoneProgress != null)
+                    {
+                        // Eski bölge mi? -> %100 yap.
+                        if (_currentZone.ZoneID < hero.MaxUnlockedZoneID)
+                            pbZoneProgress.Value = 100;
+                        else
+                            pbZoneProgress.Value = hero.ZoneProgress;
+                    }
+
+                    if (!string.IsNullOrEmpty(msg)) MessageBox.Show(msg);
+                }
+                else
+                {
+                    // NORMAL ZAFER
+                    // %10 artır
+                    string msg = _zoneManager.AddZoneProgress(hero, 10);
+                    if (pbZoneProgress != null) pbZoneProgress.Value = hero.ZoneProgress;
+
+                    if (!string.IsNullOrEmpty(msg)) MessageBox.Show(msg); // "BOSS HAZIR" mesajı
+                }
+
+                int xpGain = _currentEnemy != null ? _currentEnemy.ExpReward : 20;
+                _levelManager.AddExperience(hero, xpGain);
+
+                MessageBox.Show($"Zafer! +{xpGain} XP{lootMsg}");
+
+                if (this.ParentForm is FormMain mainForm)
+                {
+                    mainForm.UpdateUI(); // Envanteri tekrar yükler
+                }
+                // XP ve Ödül (Standart)
+                // ... (Mevcut XP kodların) ...
+            }
+            else
+            {
+                // --- KAYBETME (ÖLÜM) ---
+                MessageBox.Show("Öldün... Şehre yaralı olarak dönüyorsun. İlerlemen sıfırlandı.", "MAĞLUBİYET");
+
+                // 1. Canı ver (Hafızada)
+                hero.HP = 200;
+                hero.Mana = StatManager.CalculateMaxMana(hero.INT, hero.Level);
+
+                // 2. Veritabanı İşlemleri
+                _zoneManager.ResetProgressOnDeath(hero);
+                _charRepo.UpdateProgress(hero);
+
+                // 3. Bölge İlerleme Barını Sıfırla
+                if (pbZoneProgress != null)
+                {
+                    if (_currentZone.ZoneID < hero.MaxUnlockedZoneID)
+                        pbZoneProgress.Value = 100;
+                    else
+                        pbZoneProgress.Value = 0;
+                }
+
+                // --- KRİTİK DÜZELTME BURASI ---
+                // Ekran değişmeden ÖNCE ana formu yakalayıp güncellemeliyiz.
+                // OnReturnRequested çağırdıktan sonra 'this.ParentForm' NULL olur!
+                if (this.ParentForm is FormMain mainForm)
+                {
+                    Core.SessionManager.CurrentCharacter.HP = hero.HP; // Garanti olsun
+                    Core.SessionManager.CurrentCharacter.Mana = hero.Mana;
+                    mainForm.RefreshStats();
+                    mainForm.UpdateBars(); // Barı burada 20 olarak boyayacak
+                }
+
+                // 4. ŞİMDİ Ekranı Değiştir (Haritaya/Köye dön)
+                OnReturnRequested?.Invoke(this, EventArgs.Empty);
+            }
+        }
+
+        // Ana formdan gelen tuşları arenaya iletmek için
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (ucArena.Visible)
+            {
+                // Basit bir yönlendirme (Basılı tutma vs. için Event kullanmak daha sağlıklı ama bu da çalışır)
+                // En temizi FormMain'in KeyDown olayını buraya bağlamaktır.
+                return base.ProcessCmdKey(ref msg, keyData);
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+        private void btnReturn_Click(object sender, EventArgs e)
+        {
+            OnReturnRequested?.Invoke(this, EventArgs.Empty);
+        }
+        public void RefreshBattleStats()
+        {
+            // İçerdeki arenaya emri ilet
+            if (ucArena != null)
+            {
+                ucArena.RecalculatePlayerStats();
+            }
+        }
+
+        // FormMain'den çağırılacak tuş yöntemleri
+        public void RelayKeyDown(Keys key) { if (ucArena.Visible) ucArena.HandleKeyDown(key); }
+        public void RelayKeyUp(Keys key) { if (ucArena.Visible) ucArena.HandleKeyUp(key); }
+
+
+    }
+}

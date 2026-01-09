@@ -1,0 +1,34 @@
+﻿using rpg_deneme.Models;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace rpg_deneme.Core
+{
+    public static class SessionManager
+    {
+        public static CharacterModel CurrentCharacter { get; set; }
+
+        // Hotbar persistence: store InstanceIDs for5 slots
+        public static long?[] HotbarSlots { get; } = new long?[5];
+
+        // Temporary reservations (e.g., items reserved for blacksmith) - in-memory
+        private static HashSet<long> _reservedInstanceIds = new HashSet<long>();
+
+        public static void ReserveItem(long instanceId)
+        {
+            if (instanceId <= 0) return;
+            _reservedInstanceIds.Add(instanceId);
+        }
+        public static void UnreserveItem(long instanceId)
+        {
+            if (instanceId <= 0) return;
+            _reservedInstanceIds.Remove(instanceId);
+        }
+        public static bool IsReserved(long instanceId) => instanceId > 0 && _reservedInstanceIds.Contains(instanceId);
+
+        public static void ClearAllReservations() => _reservedInstanceIds.Clear();
+    }
+}

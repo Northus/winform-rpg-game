@@ -1,0 +1,886 @@
+﻿using rpg_deneme.Business;
+using rpg_deneme.Core; // Enums için
+using rpg_deneme.Models;
+using rpg_deneme.UI.Controls.rpg_deneme.UI.Controls;
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Windows.Forms;
+using System.Linq;
+using Timer = System.Windows.Forms.Timer;
+
+namespace rpg_deneme.UI.Controls
+{
+    public partial class UcArena : UserControl
+    {
+        private ArenaPanel _arena;
+        private Timer _gameLoop;
+        // Hotbar:5 slots
+        private class HotbarSlot
+        {
+            public int Index { get; set; }
+            public long? InstanceID { get; set; }
+            public ItemInstance Item { get; set; }
+        }
+        private List<HotbarSlot> _hotbar = new List<HotbarSlot>();
+
+        // Varlıklar
+        private BattleEntity _player;
+        private BattleEntity _enemy;
+        private List<Projectile> _projectiles = new List<Projectile>();
+        private CharacterModel _hero;
+
+        private InventoryManager _invManager = new InventoryManager();
+
+        private Button _btnMap; // Harita butonu
+        public event EventHandler OnMapRequested; // Harita istendiğinde tetiklenecek olay
+
+        // Klavye & Mouse
+        private bool _w, _a, _s, _d;
+        private Point _mousePos;
+
+        // Eventler
+        public event EventHandler<bool> OnBattleEnded;
+        public event EventHandler OnStatsUpdated;
+
+        private LootManager _lootManager = new LootManager();
+
+        // Düşman Saldırı Zamanlayıcısı
+        private int _enemyAttackCooldown = 0;
+
+        private int _attackDelayMs = 1000; // İki saldırı arası bekleme süresi (Milisaniye)
+        private DateTime _lastAttackTime = DateTime.MinValue; // Son saldırı zamanı
+        private int _manaCostPerHit = 0; // Vuruş başı mana bedeli
+
+        private bool _isTownMode = false;
+        private List<NpcEntity> _npcs = new List<NpcEntity>();
+        public event EventHandler<NpcEntity> OnNpcInteraction; // Sağ tık olayı
+
+        private bool _isBattleEnding = false; // Sadece bu yeterli
+
+        private List<VisualEffect> _effects = new List<VisualEffect>();
+
+        public UcArena()
+        {
+            this.DoubleBuffered = true;
+            this.BackColor = Color.Black;
+            SetupArena();
+        }
+
+        private void SetupArena()
+        {
+            _arena = new ArenaPanel();
+            _arena.Dock = DockStyle.Fill;
+            _arena.BackColor = Color.FromArgb(45, 45, 48);
+            _arena.Paint += Arena_Paint;
+            _arena.MouseDown += Arena_MouseDown;
+            _arena.MouseMove += (s, e) => _mousePos = e.Location;
+            // Hotbar drag/drop
+            _arena.AllowDrop = true;
+            _arena.DragEnter += Arena_DragEnter;
+            _arena.DragDrop += Arena_DragDrop;
+            this.Controls.Add(_arena);
+            this.Click += (s, e) => this.Focus();
+
+            // Initialize hotbar
+            for (int i =0; i <5; i++) _hotbar.Add(new HotbarSlot { Index = i });
+         }
+
+         private void LoadHotbarFromSession()
+         {
+             for (int i =0; i <5; i++)
+             {
+                 var id = Core.SessionManager.HotbarSlots[i];
+                 if (id.HasValue)
+                 {
+                     // resolve item from inventory if available
+                     if (_hero != null)
+                     {
+                         var inv = _invManager.GetInventory(_hero.CharacterID);
+                         var it = inv.FirstOrDefault(x => x.InstanceID == id.Value);
+                         if (it != null)
+                         {
+                             _hotbar[i].InstanceID = id.Value;
+                             _hotbar[i].Item = it;
+                         }
+                         else
+                         {
+                             _hotbar[i].InstanceID = null;
+                             _hotbar[i].Item = null;
+                         }
+                     }
+                     else
+                     {
+                         _hotbar[i].InstanceID = null;
+                         _hotbar[i].Item = null;
+                     }
+                 }
+                 else
+                 {
+                     _hotbar[i].InstanceID = null;
+                     _hotbar[i].Item = null;
+                 }
+             }
+         }
+         
+         private void SaveHotbarToSession()
+         {
+             for (int i =0; i <5; i++)
+             {
+                 Core.SessionManager.HotbarSlots[i] = _hotbar[i].InstanceID;
+             }
+         }
+
+        public void StartBattle(CharacterModel hero, BattleEntity enemyTemplate)
+        {
+            _hero = hero;
+            _projectiles.Clear();
+            _w = _a = _s = _d = false;
+
+            _isBattleEnding = false;
+
+            // 1. Karakterin Silahını Bul
+            // Veritabanından o anki envanteri çekiyoruz
+            var inventory = _invManager.GetInventory(hero.CharacterID);
+
+            // "Equipment" konumunda olan ve "Weapon" tipindeki eşyayı bul
+            var equippedWeapon = inventory.FirstOrDefault(x =>
+                x.Location == Enums.ItemLocation.Equipment &&
+                x.ItemType == Enums.ItemType.Weapon);
+
+            // 2. Hasar Hesapla (Artık silahı parametre olarak veriyoruz!)
+            int calculatedDamage = 0;
+
+            var equippedItems = inventory.Where(x => x.Location == Enums.ItemLocation.Equipment).ToList();
+
+            // StatManager ile Defansı Hesapla
+            int calculatedDefense = StatManager.CalculateTotalDefense(_hero, equippedItems);
+
+            float attackSpeed = StatManager.CalculateAttackSpeed(hero, equippedWeapon);
+            _attackDelayMs = (int)(1000f / attackSpeed);
+
+            _manaCostPerHit = StatManager.CalculateAttackManaCost(hero);
+
+            if (_hero.Class == (byte)Enums.CharacterClass.Mage)
+            {
+                // Büyücü ise Büyü Hasarı
+                calculatedDamage = StatManager.CalculateMagicalDamage(_hero, equippedWeapon);
+            }
+            else
+            {
+                // Diğerleri Fiziksel Hasar (NULL yerine equippedWeapon gönderdik)
+                calculatedDamage = StatManager.CalculatePhysicalDamage(_hero, equippedWeapon);
+            }
+
+            int maxHp = StatManager.CalculateMaxHP(_hero.VIT, _hero.Level);
+
+            // 2. Oyuncuyu Hazırla
+            _player = new BattleEntity
+            {
+                X = this.Width / 2 - 16,
+                Y = this.Height / 2 - 16,
+                Width = 32,
+                Height = 32,
+                Speed = 5.0f,
+                MaxHP = maxHp,
+                CurrentHP = _hero.HP, // MEVCUT CAN İLE BAŞLA
+                Damage = calculatedDamage,
+                Defense = calculatedDefense
+            };
+            // Güvenlik: Can max'tan büyükse eşitle
+            if (_player.CurrentHP > _player.MaxHP) _player.CurrentHP = _player.MaxHP;
+
+            // 3. Düşmanı Hazırla
+            _enemy = new BattleEntity
+            {
+                X = this.Width - 100,
+                Y = this.Height / 2 - 20,
+                Width = enemyTemplate.Width,
+                Height = enemyTemplate.Height,
+                Speed = enemyTemplate.Speed,
+                MaxHP = enemyTemplate.MaxHP,
+                CurrentHP = enemyTemplate.MaxHP,
+                Damage = enemyTemplate.Damage
+            };
+
+            // Timer Başlat
+            if (_gameLoop == null)
+            {
+                _gameLoop = new Timer { Interval = 16 };
+                _gameLoop.Tick += GameTick;
+            }
+            _gameLoop.Start();
+            this.Focus();
+        }
+
+        public void HandleKeyDown(Keys key) { SetKey(key, true); }
+        public void HandleKeyUp(Keys key) { SetKey(key, false); }
+
+        // Accept numeric keys for hotbar (1-5)
+        public void HandleHotbarKey(Keys key)
+        {
+            int index = -1;
+            if (key >= Keys.D1 && key <= Keys.D5) index = key - Keys.D1;
+            else if (key >= Keys.NumPad1 && key <= Keys.NumPad5) index = key - Keys.NumPad1;
+            if (index >= 0) UseHotbarSlot(index);
+        }
+
+        private void SetKey(Keys key, bool pressed)
+        {
+            if (key == Keys.W) _w = pressed;
+            if (key == Keys.S) _s = pressed;
+            if (key == Keys.A) _a = pressed;
+            if (key == Keys.D) _d = pressed;
+        }
+
+        private void GameTick(object sender, EventArgs e)
+        {
+            if (_player == null) return;
+
+            if (_isBattleEnding)
+            {
+                UpdateEffects();
+                _arena.Invalidate();
+                return; // <-- BURASI ÇOK ÖNEMLİ. Buradan dönmezsek karakter hareket etmeye çalışır.
+            }
+
+            UpdatePlayer();
+            UpdateProjectiles(); // Köyde büyü atmak serbest :)
+            UpdateEffects();
+            UpdateHotbarState();
+            // Köy modundaysak ekranı sürekli yenile (NPC'ler ve Player için)
+            // Savaş modundaysak ve düşman varsa düşmanı oynat
+            if (!_isTownMode && _enemy != null)
+            {
+                UpdateEnemy();
+            }
+
+            _arena.Invalidate(); // Ekranı yeniden çiz
+        }
+
+        private void UpdateHotbarState()
+        {
+            if (_hero == null) return;
+            // Refresh item info from inventory for cooldowns and counts
+            var inv = _invManager.GetInventory(_hero.CharacterID);
+            foreach (var slot in _hotbar)
+            {
+                if (slot.InstanceID.HasValue)
+                {
+                    var it = inv.FirstOrDefault(x => x.InstanceID == slot.InstanceID.Value);
+                    if (it == null)
+                    {
+                        slot.InstanceID = null;
+                        slot.Item = null;
+                    }
+                    else
+                    {
+                        slot.Item = it; // update reference
+                    }
+                }
+            }
+        }
+
+        private void UpdatePlayer()
+        {
+            // Calculate proposed movement and test collisions before applying
+            float proposedX = _player.X;
+            float proposedY = _player.Y;
+
+            if (_w && _player.Y > 0) proposedY -= _player.Speed;
+            if (_s && _player.Y < _arena.Height - _player.Height) proposedY += _player.Speed;
+            if (_a && _player.X > 0) proposedX -= _player.Speed;
+            if (_d && _player.X < _arena.Width - _player.Width) proposedX += _player.Speed;
+
+            // Build proposed rectangle
+            var proposedRect = new Rectangle((int)proposedX, (int)proposedY, _player.Width, _player.Height);
+
+            bool collides = false;
+            if (_isTownMode)
+            {
+                // Check collisions with NPCs
+                foreach (var npc in _npcs)
+                {
+                    var npcRect = new Rectangle((int)npc.X, (int)npc.Y, npc.Width, npc.Height);
+                    if (proposedRect.IntersectsWith(npcRect))
+                    {
+                        collides = true;
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                // In battle mode, avoid moving into the enemy
+                if (_enemy != null)
+                {
+                    var enemyRect = new Rectangle((int)_enemy.X, (int)_enemy.Y, _enemy.Width, _enemy.Height);
+                    if (proposedRect.IntersectsWith(enemyRect)) collides = true;
+                }
+            }
+
+            if (!collides)
+            {
+                _player.X = proposedX;
+                _player.Y = proposedY;
+            }
+        }
+
+        private void UpdateEnemy()
+        {
+            if (_enemy.CurrentHP <= 0) return;
+
+            // A. Cooldown
+            if (_enemyAttackCooldown > 0) _enemyAttackCooldown--;
+
+            // B. Takip (Chase)
+            // Use center-to-center distance for accurate range checks
+            float dist = Distance(_enemy.Center.X, _enemy.Center.Y, _player.Center.X, _player.Center.Y);
+            // Maintain a small minimum separation so they don't overlap visually
+            float minSeparation = (Math.Max(_enemy.Width, _player.Width) + Math.Max(_enemy.Height, _player.Height)) /2f;
+            if (dist > minSeparation +1f)
+            {
+                float dx = _player.X - _enemy.X;
+                float dy = _player.Y - _enemy.Y;
+                // Move only up to the point that keeps minSeparation
+                float moveDist = _enemy.Speed;
+                // If moving full speed would overshoot, clamp
+                if (dist - moveDist < minSeparation +1f)
+                {
+                    moveDist = Math.Max(0f, dist - (minSeparation +1f));
+                }
+                if (moveDist >0 && dist >0)
+                {
+                    _enemy.X += (dx / dist) * moveDist;
+                    _enemy.Y += (dy / dist) * moveDist;
+                }
+            }
+
+            // C. ATTACK: use distance-based attack so they can hit even if not overlapping
+            // attackRange is half widths/heights summed plus a small buffer
+            float attackRange = (Math.Max(_enemy.Width, _player.Width) + Math.Max(_enemy.Height, _player.Height)) /2f +8f;
+            if (dist <= attackRange)
+            {
+                if (_enemyAttackCooldown <= 0)
+                {
+                    ApplyDamageToPlayer(_enemy.Damage);
+                    _enemyAttackCooldown = 60; //1 saniye bekle
+
+                    // Geri Tepme (Knockback)
+                    float dx = _player.X - _enemy.X;
+                    float dy = _player.Y - _enemy.Y;
+                    _player.X += dx *2;
+                    _player.Y += dy *2;
+                }
+            }
+        }
+
+        private void ApplyDamageToPlayer(int incomingDamage)
+        {
+            if (_isBattleEnding) return;
+            // --- DEFANS MEKANİĞİ ---
+
+            // Formül: Gelen hasardan Defansı düş.
+            // Örnek: Düşman 15 vuruyor, Defansın 10 ise => 5 hasar alırsın.
+            // Eğer Defansın 20 ise => -5 olur ama biz bunu 1'e sabitleriz (Ölümsüzlük olmasın).
+            int reducedDamage = incomingDamage - _player.Defense;
+
+            // Güvenlik: Can hiç azalmazsa oyun sıkıcı olur, en az 1 hasar vurulsun.
+            if (reducedDamage < 1) reducedDamage = 1;
+
+            // ------------------------
+
+            _player.CurrentHP -= reducedDamage; // incomingDamage yerine reducedDamage kullandık
+
+            // ANA VERİYİ GÜNCELLE VE HABER VER
+            _hero.HP = _player.CurrentHP;
+            OnStatsUpdated?.Invoke(this, EventArgs.Empty);
+
+            if (_player.CurrentHP <= 0)
+            {
+                _player.CurrentHP = 0;
+                StartBattleEndSequence(false);
+            }
+        }
+
+        private void UpdateProjectiles()
+        {
+            for (int i = _projectiles.Count - 1; i >= 0; i--)
+            {
+                var proj = _projectiles[i];
+                proj.Move();
+
+                // 1. Duvar Kontrolü (Ekran dışına çıktı mı?)
+                if (proj.X < 0 || proj.X > _arena.Width || proj.Y < 0 || proj.Y > _arena.Height)
+                {
+                    _projectiles.RemoveAt(i);
+                    continue;
+                }
+
+                // --- DÜZELTME BURADA ---
+                // Hata veren satır: if (_enemy.CurrentHP > 0 && proj.Bounds.IntersectsWith(_enemy.Bounds))
+
+                // Yeni hali: Önce _enemy null değilse (yani savaş modundaysak) kontrol et
+                if (_enemy != null && _enemy.CurrentHP > 0 && proj.Bounds.IntersectsWith(_enemy.Bounds))
+                {
+                    ApplyDamageToEnemy(proj.Damage);
+                    _projectiles.RemoveAt(i);
+                }
+            }
+        }
+
+        private void ApplyDamageToEnemy(int dmg)
+        {
+            _enemy.CurrentHP -= dmg;
+
+            _effects.Add(new VisualEffect
+            {
+                X = _enemy.X + 10, // Düşmanın ortasından çıksın
+                Y = _enemy.Y,
+                Text = $"-{dmg}",
+                Color = Color.Yellow,
+                IsText = true,
+                LifeTime = 30 // Yarım saniye (30 frame) ekranda kalsın
+            });
+
+            if (_enemy.CurrentHP <= 0)
+            {
+                _enemy.CurrentHP = 0;
+                StartBattleEndSequence(true);
+            }
+        }
+
+        private void Arena_Paint(object sender, PaintEventArgs e)
+        {
+            // ... existing painting code ...
+            DrawHotbar(e.Graphics);
+        }
+
+        private void Arena_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (_hero == null || _player == null) return;
+            if (_isBattleEnding) return;
+
+            // HOTBAR INTERACTION HAS PRIORITY: if click is inside any hotbar slot, handle it
+            for (int i =0; i < _hotbar.Count; i++)
+            {
+                var rect = GetHotbarSlotRect(i);
+                if (rect.Contains(e.Location))
+                {
+                    if (e.Button == MouseButtons.Left)
+                    {
+                        // Left click: clear slot
+                        _hotbar[i].InstanceID = null;
+                        _hotbar[i].Item = null;
+                        SaveHotbarToSession();
+                        return;
+                    }
+                    // Middle/Right clicks could be implemented later
+                }
+            }
+
+            // SOL TIK: Büyü Atma (Mage için) / Saldırı Animasyonu
+            if (e.Button == MouseButtons.Left)
+            {
+                // --- KONTROL1: HIZ LİMİTİ (COOLDOWN) ---
+                if ((DateTime.Now - _lastAttackTime).TotalMilliseconds < _attackDelayMs)
+                {
+                    // Henüz hazır değil, işlem yapma
+                    return;
+                }
+
+                // --- KONTROL2: MANA YETERLİ Mİ? ---
+                if (_hero.Mana < _manaCostPerHit)
+                {
+                    if (!_isTownMode)
+                    {
+                        if (_hero.Mana < _manaCostPerHit) return;
+                        _hero.Mana -= _manaCostPerHit;
+                    }
+                    // Yetersiz Mana! (Kullanıcıya görsel uyarı verebiliriz)
+                    // Şimdilik sadece konsola veya Debug'a yazalım, işlem yapmayalım.
+                    // İstersen ekrana "Yetersiz Mana" yazan bir Label koyup burada gösterebilirsin.
+                    return;
+                }
+
+                // --- İŞLEM: SALDIRIYI GERÇEKLEŞTİR ---
+
+                // 1. Manayı Düş
+                _hero.Mana -= _manaCostPerHit;
+
+                // 2. Zamanlayıcıyı Sıfırla
+                _lastAttackTime = DateTime.Now;
+
+                // 3. Arayüzü Güncelle (Mana barı azalsın diye)
+                OnStatsUpdated?.Invoke(this, EventArgs.Empty);
+
+                if (_hero.Class == (byte)Enums.CharacterClass.Mage)
+                {
+                    var proj = new Projectile(_player.Center.X, _player.Center.Y, e.X, e.Y, _player.Damage);
+                    _projectiles.Add(proj);
+                }
+                else
+                {
+                    // --- WARRIOR / ROGUE: Yakın Dövüş ---
+                    _effects.Add(new VisualEffect
+                    {
+                        X = e.X -10,
+                        Y = e.Y -10,
+                        Color = Color.WhiteSmoke, // Beyaz kılıç izi
+                        IsText = false,
+                        Size =20,
+                        LifeTime =10 // Çok kısa sürsün (anlık parlama)
+                    });
+                    // Köyde değilsek ve düşman varsa
+                    if (!_isTownMode && _enemy != null)
+                    {
+                        // Tıklanan yer düşmanın üzerinde mi?
+                        if (_enemy.Bounds.Contains(e.Location))
+                        {
+                            // Mesafe Kontrolü (Yakın mı?)
+                            float dist = Distance(_player.X, _player.Y, _enemy.X, _enemy.Y);
+
+                            // 80 piksel menzil (Silah türüne göre artırılabilir)
+                            if (dist < 80)
+                            {
+                                ApplyDamageToEnemy(_player.Damage);
+                                _effects.Add(new VisualEffect
+                                {
+                                    X = e.X,
+                                    Y = e.Y,
+                                    Color = Color.Red,
+                                    IsText = false,
+                                    Size =10,
+                                    LifeTime =15
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+
+            // SAĞ TIK: NPC Etkileşimi (Sadece Köy Modunda)
+            if (_isTownMode && e.Button == MouseButtons.Right)
+            {
+                // Fareye en yakın NPC'yi bulmak için basit bir mesafe kontrolü
+                foreach (var npc in _npcs)
+                {
+                    // 1. TIKLAMA HASSASİYETİ (Mouse ile NPC arasındaki mesafe)
+                    // Kutuya (Bounds) tıklamak zor olabilir.
+                    // Fare, NPC'nin merkezine 60 piksel yakınsa tıklanmış sayalım.
+                    // (Böylece ismine tıklasan da algılar)
+                    float mouseDist = Distance(e.X, e.Y, npc.X + npc.Width /2, npc.Y + npc.Height /2);
+
+                    if (mouseDist < 60)
+                    {
+                        // 2. OYUNCU MESAFESİ (Karakter NPC'nin yanında mı?)
+                        // Merkezden merkeze ölçüm yapalım ki daha doğru olsun
+                        float playerDist = Distance(_player.Center.X, _player.Center.Y,
+                                                    npc.X + npc.Width /2, npc.Y + npc.Height /2);
+
+                        // Mesafeyi biraz artırdım (100 -> 150), çok dibine girmeye gerek kalmasın.
+                        if (playerDist < 150)
+                        {
+                            OnNpcInteraction?.Invoke(this, npc);
+                        }
+                        else
+                        {
+                            MessageBox.Show("Sesini duyuramıyorum, biraz daha yaklaş! (WASD ile yürü)");
+                        }
+                        return; // İşlem tamam, döngüden çık
+                    }
+                }
+            }
+        }
+
+        private Color GetHotbarColor(Enums.ItemGrade grade, Enums.ItemType itemType)
+        {
+            // Consumables have a neutral tint; equipment use grade tint
+            if (itemType == Enums.ItemType.Consumable) return Color.MediumSeaGreen;
+
+            return grade switch
+            {
+                Enums.ItemGrade.Common => Color.WhiteSmoke,
+                Enums.ItemGrade.Rare => Color.CornflowerBlue,
+                Enums.ItemGrade.Epic => Color.MediumPurple,
+                Enums.ItemGrade.Legendary => Color.Orange,
+                _ => Color.Gray
+            };
+        }
+
+        private void DrawHotbar(Graphics g)
+        {
+            for (int i =0; i < _hotbar.Count; i++)
+            {
+                var rect = GetHotbarSlotRect(i);
+                using (Brush b = new SolidBrush(Color.FromArgb(50,50,50)))
+                using (Pen p = new Pen(Color.DimGray))
+                {
+                    g.FillRectangle(b, rect);
+                    g.DrawRectangle(p, rect);
+                }
+                
+                var slot = _hotbar[i];
+                if (slot.InstanceID.HasValue && slot.Item != null)
+                {
+                    // draw item representation (use grade color)
+                    var color = slot.Item.Grade == Enums.ItemGrade.Common ? Color.WhiteSmoke : GetHotbarColor(slot.Item.Grade, slot.Item.ItemType);
+ Rectangle inner = new Rectangle(rect.X +4, rect.Y +4, rect.Width -8, rect.Height -8);
+ using (Brush ib = new SolidBrush(color)) g.FillRectangle(ib, inner);
+                    
+                    // Tooltip: draw name when hovering
+                    if (rect.Contains(_mousePos))
+                    {
+                        string tt = slot.Item != null ? slot.Item.Name : "";
+                        using (Font f = new Font("Segoe UI",8))
+                        using (Brush fb = new SolidBrush(Color.White))
+                        {
+                            g.DrawString(tt, f, fb, rect.X, rect.Y -16);
+                        }
+                    }
+
+                    // Count
+                    if (slot.Item.IsStackable && slot.Item.Count > 1)
+                    {
+                        using (Font f = new Font("Segoe UI", 9, FontStyle.Bold))
+                        using (Brush fb = new SolidBrush(Color.White))
+                        {
+                            string txt = slot.Item.Count.ToString();
+                            var sz = g.MeasureString(txt, f);
+                            g.DrawString(txt, f, fb, rect.Right - sz.Width - 6, rect.Bottom - sz.Height - 6);
+                        }
+                    }
+
+                    // Cooldown visualization
+                    int rem = slot.Item.RemainingCooldownSeconds;
+                    int cd = slot.Item.Cooldown;
+                    if (cd > 0 && rem > 0)
+                    {
+                        float frac = Math.Max(0f, Math.Min(1f, (float)rem / cd));
+                        // draw pie from top clockwise
+                        using (Brush cb = new SolidBrush(Color.FromArgb(180, Color.Black)))
+                        {
+                            int pad = 6;
+                            Rectangle pieRect = new Rectangle(rect.X + pad, rect.Y + pad, rect.Width - pad * 2, rect.Height - pad * 2);
+                            float sweep = 360f * frac;
+                            g.FillPie(cb, pieRect, -90, sweep);
+                        }
+                        // draw remaining seconds in center
+                        using (Font f = new Font("Segoe UI", 10, FontStyle.Bold))
+                        using (Brush fb = new SolidBrush(Color.White))
+                        {
+                            string s = rem.ToString();
+                            var sz = g.MeasureString(s, f);
+                            g.DrawString(s, f, fb, rect.X + (rect.Width - sz.Width) / 2, rect.Y + (rect.Height - sz.Height) / 2);
+                        }
+                    }
+                }
+                else
+                {
+                    // draw slot index hint
+                    using (Font f = new Font("Segoe UI", 9, FontStyle.Regular))
+                    using (Brush fb = new SolidBrush(Color.Gray))
+                    {
+                        string s = (i + 1).ToString();
+                        var sz = g.MeasureString(s, f);
+                        g.DrawString(s, f, fb, rect.X + 6, rect.Y + 6);
+                    }
+                }
+            }
+        }
+        public void StartTown(CharacterModel hero)
+        {
+            _isBattleEnding = false;
+            _hero = hero;
+            _isTownMode = true;
+            _projectiles.Clear();
+            _npcs.Clear();
+            _w = _a = _s = _d = false;
+            // 1. NPC'leri Tanımla (Konumları henüz 0,0)
+            InitTownEntities();
+            // 2. Konumları Hesapla (Şu anki boyuta göre)
+            UpdateTownLayout();
+            // EKRAN BOYUTU KONTROLÜ (Güvenlik)
+            int w = this.Width > 0 ? this.Width : 1024;
+            int h = this.Height > 0 ? this.Height : 720;
+
+            int maxHp = StatManager.CalculateMaxHP(_hero.VIT, _hero.Level);
+
+            _player = new BattleEntity
+            {
+                X = w / 2 - 16, // w kullanıyoruz
+                Y = h / 2 - 16, // h kullanıyoruz
+                Width = 32,
+                Height = 32,
+                Speed = 5.0f,
+                MaxHP = maxHp,
+                CurrentHP = _hero.HP,
+                Damage = 0,
+                Defense = 0
+            };
+
+            // NPC'leri güvenli koordinatlara koy
+            _npcs.Add(new NpcEntity("MARKET", Enums.NpcType.Merchant, 100, h / 2 - 20));
+            _npcs.Add(new NpcEntity("IŞINLAYICI", Enums.NpcType.Teleporter, w - 140, h / 2 - 20));
+
+            if (_gameLoop == null)
+            {
+                _gameLoop = new Timer { Interval = 16 };
+                _gameLoop.Tick += GameTick;
+            }
+            _gameLoop.Start();
+            this.Focus();
+        }
+        // Savaş sırasında statları güncelleyen kritik metod
+        public void RecalculatePlayerStats()
+        {
+            if (_hero == null || _player == null) return;
+
+            // 1. En güncel envanteri çek
+            var inventory = _invManager.GetInventory(_hero.CharacterID);
+
+            // 2. Takılı olan Silahı ve Zırhları bul
+            var equippedWeapon = inventory.FirstOrDefault(x =>
+                x.Location == Enums.ItemLocation.Equipment &&
+                x.ItemType == Enums.ItemType.Weapon);
+
+            var equippedItems = inventory.Where(x => x.Location == Enums.ItemLocation.Equipment).ToList();
+
+            // 3. Hasarı Yeniden Hesapla
+            int newDamage = 0;
+            if (_hero.Class == (byte)Enums.CharacterClass.Mage)
+            {
+                newDamage = StatManager.CalculateMagicalDamage(_hero, equippedWeapon);
+            }
+            else
+            {
+                newDamage = StatManager.CalculatePhysicalDamage(_hero, equippedWeapon);
+            }
+
+            // 4. Defansı Yeniden Hesapla
+            int newDefense = StatManager.CalculateTotalDefense(_hero, equippedItems);
+
+            // 5. Oyuncunun (BattleEntity) değerlerini GÜNCELLE
+            _player.Damage = newDamage;
+            _player.Defense = newDefense;
+
+            // (Opsiyonel) MaxHP değiştiyse canı güncellemek gerekir mi?
+            // Genelde savaş ortasında zırh çıkarınca MaxHP düşerse CurrentHP de düşmeli mi?
+            // Şimdilik sadece hasar ve defansı güncelliyoruz, MaxHP'ye dokunmuyoruz (karışıklık çıkmasın).
+        }
+        private void InitTownEntities()
+        {
+            _npcs.Clear();
+
+            // NPC'leri listeye ekliyoruz. Koordinatlara şimdilik 0 veriyoruz,
+            // çünkü onları UpdateTownLayout metodu yerleştirecek.
+            _npcs.Add(new NpcEntity("MARKET", Enums.NpcType.Merchant, 0, 0));
+            _npcs.Add(new NpcEntity("IŞINLAYICI", Enums.NpcType.Teleporter, 0, 0));
+
+            // İleride buraya: _npcs.Add(new NpcEntity("DEMİRCİ", ..., 0, 0)); ekleyebilirsin.
+        }
+        private void UpdateTownLayout()
+        {
+            if (!_isTownMode) return;
+
+            // Ekranın güncel boyutlarını al
+            int w = this.Width;
+            int h = this.Height;
+            int centerY = h / 2 - 20; // Dikeyde ortala (NPC boyunun yarısı kadar yukarı)
+
+            foreach (var npc in _npcs)
+            {
+                switch (npc.Type)
+                {
+                    case Enums.NpcType.Merchant:
+                        // Market Solda: Sol kenardan 100px içeride
+                        npc.X = 100;
+                        npc.Y = centerY;
+                        break;
+
+                    case Enums.NpcType.Teleporter:
+                        // Işınlayıcı Sağda: Sağ kenardan 140px içeride
+                        npc.X = w - 140;
+                        npc.Y = centerY;
+                        break;
+
+                        // Gelecekte eklenecekler için:
+                        // case Enums.NpcType.Blacksmith:
+                        //    npc.X = w / 2; npc.Y = 50; // Üst orta vs.
+                        //    break;
+                }
+            }
+
+            // Eğer butonu da dinamik yönetmek istersen:
+            if (_btnMap != null)
+            {
+                _btnMap.Location = new Point(w - 180, 20);
+            }
+        }
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+
+            // Boyut değiştiğinde NPC'leri tekrar hizala
+            if (_isTownMode)
+            {
+                UpdateTownLayout();
+
+                // İstersen oyuncuyu da ekranın dışına taşmasın diye düzeltebilirsin
+                // Ama şimdilik sadece NPC'ler yeterli.
+            }
+        }
+        // "async" ekledik
+        private async void StartBattleEndSequence(bool victory)
+        {
+            // 1. Korumayı aç: Artık kimse hareket edemez, saldıramaz
+            _isBattleEnding = true;
+
+            // 2. Bekle (Bu sırada GameTick çalışıyor ama _isBattleEnding yüzünden hareket yok)
+            await Task.Delay(1000); // 1 saniye (1000 ms)
+
+            // 3. Süre doldu, savaşı bitir
+            _gameLoop.Stop();
+            _isBattleEnding = false;
+            OnBattleEnded?.Invoke(this, victory);
+        }
+        public class VisualEffect
+        {
+            public float X { get; set; }
+            public float Y { get; set; }
+            public string Text { get; set; } // Hasar yazısı için
+            public Color Color { get; set; }
+            public int LifeTime { get; set; } // Ne kadar ekranda kalacak? (Frame sayısı)
+            public bool IsText { get; set; } // Yazı mı yoksa şekil mi?
+
+            // Slash (Kılıç izi) için ek özellikler
+            public float Angle { get; set; }
+            public int Size { get; set; }
+        }
+
+        private void UpdateEffects()
+        {
+            for (int i = _effects.Count -1; i >=0; i--)
+            {
+                var fx = _effects[i];
+                fx.LifeTime--;
+
+                if (fx.IsText)
+                {
+                    fx.Y -=1.0f; // Yazılar yukarı doğru uçsun
+                }
+
+                // Ömrü biteni sil
+                if (fx.LifeTime <=0)
+                {
+                    _effects.RemoveAt(i);
+                }
+            }
+        }
+
+        private float Distance(float x1, float y1, float x2, float y2)
+        {
+            return (float)Math.Sqrt(Math.Pow(x2 - x1,2) + Math.Pow(y2 - y1,2));
+        }
+    }
+}

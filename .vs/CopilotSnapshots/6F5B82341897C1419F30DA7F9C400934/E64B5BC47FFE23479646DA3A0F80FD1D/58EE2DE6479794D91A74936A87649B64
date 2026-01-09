@@ -1,0 +1,125 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using rpg_deneme.Core;
+using rpg_deneme.Data;
+using rpg_deneme.Models;
+
+namespace rpg_deneme.Business
+{
+    public class UpgradeManager
+    {
+        private readonly InventoryRepository _repo = new InventoryRepository();
+        private readonly Random _rnd = new Random();
+
+        // Yükseltme Malzemesi Template ID'si (SQL'de eklediğin ID)
+        public const int UPGRADE_MATERIAL_ID = 7;
+
+        // Şans Eşyaları ID Listesi (Kontrol için)
+        private readonly int[] _luckyItemIds = { 8, 9, 10, 11 };
+
+        // İstenen Malzeme Miktarı: +0->+1 (5), +1->+2 (10), +2->+3 (20)...
+        public int GetRequiredMaterialCount(int currentLevel)
+        {
+            // Formül: 5 * (2 üzeri seviye)
+            // Lvl 0: 5
+            // Lvl 1: 10
+            // Lvl 2: 20
+            // Lvl 3: 40...
+            return 5 * (int)Math.Pow(2, currentLevel);
+        }
+
+        // Temel Başarı Şansı
+        public int GetBaseSuccessRate(int currentLevel)
+        {
+            // +0 -> 100%
+            // +1 -> 90%
+            // ...
+            // +8 -> 20%
+            // +9 -> 10%
+            int chance = 100 - (currentLevel * 10);
+            return Math.Max(10, chance); // En az %10 şans olsun
+        }
+
+        // Şans Eşyasından Gelen Bonus
+        public int GetLuckyItemBonus(int templateId)
+        {
+            return templateId switch
+            {
+                11 => 10,
+                12 => 30,
+                13 => 50,
+                14 => 100,
+                _ => 0
+            };
+        }
+
+        public bool IsLuckyItem(int templateId) => System.Linq.Enumerable.Contains(_luckyItemIds, templateId);
+
+        public bool IsUpgradeable(ItemInstance item)
+        {
+            // Sadece Silah ve Zırh
+            return (item.ItemType == Enums.ItemType.Weapon || item.ItemType == Enums.ItemType.Armor)
+                   && item.UpgradeLevel < 9;
+        }
+
+        /// <summary>
+        /// Yükseltme işlemini gerçekleştirir.
+        /// </summary>
+        /// <returns>1: Başarılı, 0: Başarısız (Yandı), -1: Hata/Yetersiz Malzeme</returns>
+        public int PerformUpgrade(ItemInstance mainItem, ItemInstance materialItem, ItemInstance luckyItem)
+        {
+            int reqCount = GetRequiredMaterialCount(mainItem.UpgradeLevel);
+
+            // 1. Malzeme Kontrolü
+            if (materialItem == null || materialItem.TemplateID != UPGRADE_MATERIAL_ID || materialItem.Count < reqCount)
+                return -1; // Malzeme yetersiz veya yanlış
+
+            // 2. Şans Hesabı
+            int baseChance = GetBaseSuccessRate(mainItem.UpgradeLevel);
+            int bonusChance = (luckyItem != null) ? GetLuckyItemBonus(luckyItem.TemplateID) : 0;
+            int totalChance = baseChance + bonusChance;
+
+            // 3. Malzemeleri Tüket
+            _repo.ConsumeItem(materialItem.InstanceID, reqCount);
+            if (luckyItem != null)
+            {
+                _repo.ConsumeItem(luckyItem.InstanceID, 1);
+            }
+
+            // 4. Zar At
+            int roll = _rnd.Next(1, 101); // 1-100 arası sayı
+
+            if (roll <= totalChance)
+            {
+                // BAŞARILI
+                // Seviyeyi artır
+                UpdateUpgradeLevel(mainItem.InstanceID, mainItem.UpgradeLevel + 1);
+                // Note: Do NOT modify the passed-in object here; UI layer will update its display as needed.
+                return 1;
+            }
+            else
+            {
+                // BAŞARISIZ
+                // Eşyayı yok et
+                _repo.ConsumeItem(mainItem.InstanceID, mainItem.Count); // Hepsini siler
+                return 0;
+            }
+        }
+
+        private void UpdateUpgradeLevel(long instanceId, int newLevel)
+        {
+            using (var conn = DatabaseHelper.GetConnection())
+            {
+                conn.Open();
+                const string sql = "UPDATE ItemInstances SET UpgradeLevel = @lvl WHERE InstanceID = @id";
+                using var cmd = new Microsoft.Data.Sqlite.SqliteCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@lvl", newLevel);
+                cmd.Parameters.AddWithValue("@id", instanceId);
+                cmd.ExecuteNonQuery();
+            }
+        }
+    }
+}

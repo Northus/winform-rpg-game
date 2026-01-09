@@ -1,0 +1,83 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using rpg_deneme.Models;
+using System.Collections.Generic;
+
+namespace rpg_deneme.Business
+{
+    public static class EnemyFactory
+    {
+        /// <summary>
+        /// Tek bir şablondan, belirtilen sayıda ve güçte düşman listesi üretir.
+        /// </summary>
+        public static List<EnemyModel> CreateEnemies(EnemyModel template, int count, float multiplier)
+        {
+            var list = new List<EnemyModel>();
+
+            for (int i = 0; i < count; i++)
+            {
+                // Her biri için yeni kopya oluştur (Referans karışmaması için)
+                var scaledEnemy = ScaleEnemy(template, multiplier);
+                list.Add(scaledEnemy);
+            }
+
+            return list;
+        }
+
+        /// <summary>
+        /// Bir düşman şablonunu kopyalar ve statlarını çarpanla artırır.
+        /// Ayrıca Ranged/Melee ayarlarını yapar.
+        /// </summary>
+        public static EnemyModel ScaleEnemy(EnemyModel template, float multiplier)
+        {
+            // Ranged kontrolü tek bir yerde! (Hem Type hem SpritePath'e bak)
+            bool isRanged = false;
+            try
+            {
+                if (template != null)
+                {
+                    // Öncelik: template.IsRanged (eğer DB'den geliyorsa), sonra Type, sonra SpritePath string'i
+                    if (template.IsRanged) isRanged = true;
+                    else if (template.Type == Core.Enums.EnemyType.Ranged) isRanged = true;
+                    else if (!string.IsNullOrEmpty(template.SpritePath) && template.SpritePath.Trim().ToUpper().Contains("RANGED")) isRanged = true;
+                }
+            }
+            catch { /* güvenli taraf */ }
+
+            var scaled = new EnemyModel
+            {
+                EnemyID = template.EnemyID,
+                Name = template.Name,
+                Level = template.Level,
+
+                // Statları Çarp
+                MaxHP = (int)(template.MaxHP * multiplier),
+                CurrentHP = (int)(template.MaxHP * multiplier),
+                Damage = (int)(template.Damage * multiplier),
+                ExpReward = (int)(template.ExpReward * multiplier),
+                GoldReward = (int)(template.GoldReward * multiplier),
+
+                // Görsel ve Tip Özellikleri
+                SpritePath = template.SpritePath, // "RANGED" bilgisini koru
+                Width = template.Width > 0 ? template.Width : 64,
+                Height = template.Height > 0 ? template.Height : 64,
+
+                // Hız ayarı (Ranged ise biraz daha hızlı kaçsın)
+                Speed = isRanged ? 3.5f * multiplier : 3.0f * multiplier,
+
+                // Kopya diğer meta veriler
+                IsBoss = template.IsBoss,
+                Type = template.Type
+            };
+
+            // Set ranged flag and attack range on the created enemy (BattleEntity has these props)
+            scaled.IsRanged = isRanged;
+            scaled.AttackRange = isRanged ? 250 : 50;
+
+            return scaled;
+        }
+    }
+}

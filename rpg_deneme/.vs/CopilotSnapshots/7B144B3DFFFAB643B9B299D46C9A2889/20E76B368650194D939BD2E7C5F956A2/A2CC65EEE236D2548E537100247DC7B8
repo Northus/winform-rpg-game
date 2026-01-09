@@ -1,0 +1,60 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Numerics;
+using rpg_deneme.Models;
+
+namespace rpg_deneme.UI.Controls;
+
+internal sealed class EnemySpatialGrid
+{
+ // Uniform grid for neighbor queries (reduces O(n^2) separation checks)
+ private readonly Dictionary<long, List<int>> _cells = new();
+ private readonly List<long> _occupiedKeys = new();
+ private float _cellSize;
+
+ public void Build(IReadOnlyList<BattleEntity> enemies, float cellSize)
+ {
+ _cellSize = Math.Max(1f, cellSize);
+ _cells.Clear();
+ _occupiedKeys.Clear();
+
+ for (int i =0; i < enemies.Count; i++)
+ {
+ var e = enemies[i];
+ if (e.CurrentHP <=0) continue;
+ long key = Key(Cell(e.X), Cell(e.Y));
+ if (!_cells.TryGetValue(key, out var list))
+ {
+ list = new List<int>(4);
+ _cells[key] = list;
+ _occupiedKeys.Add(key);
+ }
+ list.Add(i);
+ }
+ }
+
+ public void ForEachNeighborIndex(float x, float y, Action<int> visitor)
+ {
+ int cx = Cell(x);
+ int cy = Cell(y);
+
+ for (int dy = -1; dy <=1; dy++)
+ for (int dx = -1; dx <=1; dx++)
+ {
+ long key = Key(cx + dx, cy + dy);
+ if (_cells.TryGetValue(key, out var list))
+ {
+ for (int i =0; i < list.Count; i++)
+ visitor(list[i]);
+ }
+ }
+ }
+
+ private int Cell(float v) => (int)MathF.Floor(v / _cellSize);
+
+ private static long Key(int x, int y)
+ {
+ // pack two ints into one long (stable hash)
+ return ((long)x <<32) ^ (uint)y;
+ }
+}
