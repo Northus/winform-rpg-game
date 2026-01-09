@@ -31,6 +31,10 @@ public class FormMain : Form
     private UserControl _currentScreen;
     private IContainer components = null;
 
+
+
+    private bool _isReturningToCharSelect = false;
+
     private Panel panel1;
     private Button btnInventory;
     private Button btnStats;
@@ -42,6 +46,7 @@ public class FormMain : Form
     private GameProgressBar pbMana;
     private GameProgressBar pbHP;
     private Button btnSkills;
+    private Button btnMenu;
     private GameProgressBar pbExp;
 
     /// <summary>
@@ -82,6 +87,7 @@ public class FormMain : Form
             }
 
             ShowTown();
+            btnMenu.Click += (s, args) => ShowMenu();
         }
     }
 
@@ -110,7 +116,10 @@ public class FormMain : Form
 
         if (_formSkills != null && !_formSkills.IsDisposed) _formSkills.Dispose();
 
-        Application.Exit();
+        if (!_isReturningToCharSelect)
+        {
+            Application.Exit();
+        }
     }
 
     /// <summary>
@@ -587,9 +596,80 @@ public class FormMain : Form
         base.Dispose(disposing);
     }
 
+    private void ShowMenu()
+    {
+        // 1. Create Dimmer Form
+        Form dimmer = new Form();
+        dimmer.FormBorderStyle = FormBorderStyle.None;
+        dimmer.BackColor = Color.Black;
+        dimmer.Opacity = 0.5; // Adjust darkness here
+        dimmer.ShowInTaskbar = false;
+        dimmer.StartPosition = FormStartPosition.Manual;
+        dimmer.Location = this.PointToScreen(Point.Empty);
+        dimmer.Size = this.Size;
+        dimmer.Owner = this;
+        dimmer.Show();
+
+        // 2. Show Menu Dialog
+        using (FormGameMenu menu = new FormGameMenu())
+        {
+            menu.StartPosition = FormStartPosition.CenterScreen; // Center on screen usually works best combined with parent context, but CenterParent is safer if parent set.
+                                                                 // However, CenterParent centers on the 'dimmer' if passed to ShowDialog.
+
+            menu.ShowDialog(dimmer); // Modal to dimmer
+
+            // 3. Handle Result
+            if (menu.SelectedAction == FormGameMenu.MenuAction.CharSelect)
+            {
+                ReturnToCharSelect();
+            }
+            else if (menu.SelectedAction == FormGameMenu.MenuAction.Exit)
+            {
+                Application.Exit();
+            }
+        }
+
+        // 4. Cleanup
+        dimmer.Close();
+        dimmer.Dispose();
+    }
+
+    private void ReturnToCharSelect()
+    {
+        if (MessageBox.Show("Karakter seçim ekranına dönmek istediğine emin misin?", "Onay", MessageBoxButtons.YesNo) == DialogResult.Yes)
+        {
+            _isReturningToCharSelect = true;
+
+            // Find existing hidden FormCharSelect if any
+            FormCharSelect existing = null;
+            foreach (Form f in Application.OpenForms)
+            {
+                if (f is FormCharSelect)
+                {
+                    existing = (FormCharSelect)f;
+                    break;
+                }
+            }
+
+            if (existing != null)
+            {
+                existing.Show();
+                existing.LoadCharactersToSlots(); // Refresh slots
+            }
+            else
+            {
+                FormCharSelect frm = new FormCharSelect();
+                frm.Show();
+            }
+
+            this.Close();
+        }
+    }
+
     private void InitializeComponent()
     {
         panel1 = new Panel();
+        btnSkills = new Button();
         pbMana = new GameProgressBar();
         pbHP = new GameProgressBar();
         pbExp = new GameProgressBar();
@@ -600,13 +680,14 @@ public class FormMain : Form
         ucStats1 = new UcStats();
         ucInventory1 = new UcInventory();
         pnlMainContent = new Panel();
-        btnSkills = new Button();
+        btnMenu = new Button();
         panel1.SuspendLayout();
         SuspendLayout();
         // 
         // panel1
         // 
         panel1.BackColor = Color.DimGray;
+        panel1.Controls.Add(btnMenu);
         panel1.Controls.Add(btnSkills);
         panel1.Controls.Add(pbMana);
         panel1.Controls.Add(pbHP);
@@ -620,6 +701,16 @@ public class FormMain : Form
         panel1.Name = "panel1";
         panel1.Size = new Size(1008, 70);
         panel1.TabIndex = 0;
+        // 
+        // btnSkills
+        // 
+        btnSkills.Location = new Point(286, 26);
+        btnSkills.Name = "btnSkills";
+        btnSkills.Size = new Size(75, 23);
+        btnSkills.TabIndex = 10;
+        btnSkills.Text = "Skills";
+        btnSkills.UseVisualStyleBackColor = true;
+        btnSkills.Click += btnSkills_Click;
         // 
         // pbMana
         // 
@@ -669,7 +760,7 @@ public class FormMain : Form
         // lblCharName
         // 
         lblCharName.AutoSize = true;
-        lblCharName.Location = new Point(12, 30);
+        lblCharName.Location = new Point(43, 30);
         lblCharName.Name = "lblCharName";
         lblCharName.Size = new Size(38, 15);
         lblCharName.TabIndex = 2;
@@ -726,15 +817,14 @@ public class FormMain : Form
         pnlMainContent.Size = new Size(1008, 611);
         pnlMainContent.TabIndex = 3;
         // 
-        // btnSkills
+        // btnMenu
         // 
-        btnSkills.Location = new Point(286, 26);
-        btnSkills.Name = "btnSkills";
-        btnSkills.Size = new Size(75, 23);
-        btnSkills.TabIndex = 10;
-        btnSkills.Text = "Skills";
-        btnSkills.UseVisualStyleBackColor = true;
-        btnSkills.Click += btnSkills_Click;
+        btnMenu.Location = new Point(12, 26);
+        btnMenu.Name = "btnMenu";
+        btnMenu.Size = new Size(23, 23);
+        btnMenu.TabIndex = 11;
+        btnMenu.Text = "*";
+        btnMenu.UseVisualStyleBackColor = true;
         // 
         // FormMain
         // 

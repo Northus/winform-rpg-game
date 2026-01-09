@@ -3,12 +3,24 @@
   "WorkspaceRootPath": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\",
   "Documents": [
     {
-      "AbsoluteMoniker": "D:0:0:{9E8CD4F9-ACC5-A94A-F44D-1C83A60E1E4C}|rpg_deneme.csproj|c:\\users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\ui\\controls\\ucarena.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{9E8CD4F9-ACC5-A94A-F44D-1C83A60E1E4C}|rpg_deneme.csproj|solutionrelative:ui\\controls\\ucarena.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+      "AbsoluteMoniker": "D:0:0:{9E8CD4F9-ACC5-A94A-F44D-1C83A60E1E4C}|rpg_deneme.csproj|C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\formmain.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}|Form",
+      "RelativeMoniker": "D:0:0:{9E8CD4F9-ACC5-A94A-F44D-1C83A60E1E4C}|rpg_deneme.csproj|solutionrelative:formmain.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}|Form"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{9E8CD4F9-ACC5-A94A-F44D-1C83A60E1E4C}|rpg_deneme.csproj|c:\\users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\formmain.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{9E8CD4F9-ACC5-A94A-F44D-1C83A60E1E4C}|rpg_deneme.csproj|solutionrelative:formmain.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{9E8CD4F9-ACC5-A94A-F44D-1C83A60E1E4C}|rpg_deneme.csproj|c:\\users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\ui\\controls\\ucarena.fpscounter.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{9E8CD4F9-ACC5-A94A-F44D-1C83A60E1E4C}|rpg_deneme.csproj|solutionrelative:ui\\controls\\ucarena.fpscounter.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{9E8CD4F9-ACC5-A94A-F44D-1C83A60E1E4C}|rpg_deneme.csproj|c:\\users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\ui\\windows\\formskills.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}|Form",
+      "RelativeMoniker": "D:0:0:{9E8CD4F9-ACC5-A94A-F44D-1C83A60E1E4C}|rpg_deneme.csproj|solutionrelative:ui\\windows\\formskills.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}|Form"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{9E8CD4F9-ACC5-A94A-F44D-1C83A60E1E4C}|rpg_deneme.csproj|c:\\users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\ui\\controls\\ucarena.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{9E8CD4F9-ACC5-A94A-F44D-1C83A60E1E4C}|rpg_deneme.csproj|solutionrelative:ui\\controls\\ucarena.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{9E8CD4F9-ACC5-A94A-F44D-1C83A60E1E4C}|rpg_deneme.csproj|c:\\users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\ui\\controls\\ucarena.skia.rendering.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
@@ -35,20 +47,12 @@
       "RelativeMoniker": "D:0:0:{9E8CD4F9-ACC5-A94A-F44D-1C83A60E1E4C}|rpg_deneme.csproj|solutionrelative:ui\\windows\\ucexploration.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{9E8CD4F9-ACC5-A94A-F44D-1C83A60E1E4C}|rpg_deneme.csproj|c:\\users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\formmain.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{9E8CD4F9-ACC5-A94A-F44D-1C83A60E1E4C}|rpg_deneme.csproj|solutionrelative:formmain.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
-    },
-    {
       "AbsoluteMoniker": "D:0:0:{9E8CD4F9-ACC5-A94A-F44D-1C83A60E1E4C}|rpg_deneme.csproj|c:\\users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\ui\\controls\\gameentities\\skillprojectile.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{9E8CD4F9-ACC5-A94A-F44D-1C83A60E1E4C}|rpg_deneme.csproj|solutionrelative:ui\\controls\\gameentities\\skillprojectile.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{9E8CD4F9-ACC5-A94A-F44D-1C83A60E1E4C}|rpg_deneme.csproj|c:\\users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\ui\\controls\\ucarena.input.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{9E8CD4F9-ACC5-A94A-F44D-1C83A60E1E4C}|rpg_deneme.csproj|solutionrelative:ui\\controls\\ucarena.input.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
-    },
-    {
-      "AbsoluteMoniker": "D:0:0:{9E8CD4F9-ACC5-A94A-F44D-1C83A60E1E4C}|rpg_deneme.csproj|C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\formmain.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}|Form",
-      "RelativeMoniker": "D:0:0:{9E8CD4F9-ACC5-A94A-F44D-1C83A60E1E4C}|rpg_deneme.csproj|solutionrelative:formmain.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}|Form"
     },
     {
       "AbsoluteMoniker": "D:0:0:{9E8CD4F9-ACC5-A94A-F44D-1C83A60E1E4C}|rpg_deneme.csproj|c:\\users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\business\\skillmanager.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
@@ -90,7 +94,7 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 4,
+          "SelectedChildIndex": 7,
           "Children": [
             {
               "$type": "Bookmark",
@@ -98,19 +102,19 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 19,
-              "Title": "BattleEntity.cs",
-              "DocumentMoniker": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\Models\\BattleEntity.cs",
-              "RelativeDocumentMoniker": "Models\\BattleEntity.cs",
-              "ToolTip": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\Models\\BattleEntity.cs",
-              "RelativeToolTip": "Models\\BattleEntity.cs",
-              "ViewState": "AgIAAHMAAAAAAAAAAIBYwAAAAAAAAAAAAAAAAA==",
+              "DocumentIndex": 3,
+              "Title": "FormSkills.cs [Tasar\u0131m]",
+              "DocumentMoniker": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\UI\\Windows\\FormSkills.cs",
+              "RelativeDocumentMoniker": "UI\\Windows\\FormSkills.cs",
+              "ToolTip": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\UI\\Windows\\FormSkills.cs [Tasar\u0131m]",
+              "RelativeToolTip": "UI\\Windows\\FormSkills.cs [Tasar\u0131m]",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2026-01-09T16:11:19.508Z"
+              "WhenOpened": "2026-01-09T22:37:37.373Z",
+              "EditorCaption": " [Tasar\u0131m]"
             },
             {
               "$type": "Document",
-              "DocumentIndex": 1,
+              "DocumentIndex": 2,
               "Title": "UcArena.FpsCounter.cs",
               "DocumentMoniker": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\UI\\Controls\\UcArena.FpsCounter.cs",
               "RelativeDocumentMoniker": "UI\\Controls\\UcArena.FpsCounter.cs",
@@ -118,36 +122,25 @@
               "RelativeToolTip": "UI\\Controls\\UcArena.FpsCounter.cs",
               "ViewState": "AgIAABcAAAAAAAAAAAAewBwAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2026-01-09T03:50:13.29Z"
+              "WhenOpened": "2026-01-09T03:50:13.29Z",
+              "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 2,
-              "Title": "UcArena.Skia.Rendering.cs",
-              "DocumentMoniker": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\UI\\Controls\\UcArena.Skia.Rendering.cs",
-              "RelativeDocumentMoniker": "UI\\Controls\\UcArena.Skia.Rendering.cs",
-              "ToolTip": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\UI\\Controls\\UcArena.Skia.Rendering.cs",
-              "RelativeToolTip": "UI\\Controls\\UcArena.Skia.Rendering.cs",
-              "ViewState": "AgIAAIwDAAAAAAAAAEBVwDYBAAAAAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2026-01-09T03:12:28.551Z"
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 0,
+              "DocumentIndex": 4,
               "Title": "UcArena.cs",
               "DocumentMoniker": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\UI\\Controls\\UcArena.cs",
               "RelativeDocumentMoniker": "UI\\Controls\\UcArena.cs",
               "ToolTip": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\UI\\Controls\\UcArena.cs",
               "RelativeToolTip": "UI\\Controls\\UcArena.cs",
-              "ViewState": "AgIAAC0BAAAAAAAAAAAjwEABAAAIAAAAAAAAAA==",
+              "ViewState": "AgIAAC0BAAAAAAAAAAAjwEABAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2026-01-07T18:08:01.666Z",
               "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 7,
+              "DocumentIndex": 10,
               "Title": "UcExploration.cs",
               "DocumentMoniker": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\UI\\Windows\\UcExploration.cs",
               "RelativeDocumentMoniker": "UI\\Windows\\UcExploration.cs",
@@ -159,20 +152,20 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 8,
+              "DocumentIndex": 1,
               "Title": "FormMain.cs",
               "DocumentMoniker": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\FormMain.cs",
               "RelativeDocumentMoniker": "FormMain.cs",
               "ToolTip": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\FormMain.cs",
               "RelativeToolTip": "FormMain.cs",
-              "ViewState": "AgIAAHUAAAAAAAAAAAAAAHsAAAAUAAAAAAAAAA==",
+              "ViewState": "AgIAAHYAAAAAAAAAAAAAAHwAAAAUAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2026-01-09T02:46:04.413Z",
               "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 15,
+              "DocumentIndex": 16,
               "Title": "rpg_deneme.csproj",
               "DocumentMoniker": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\rpg_deneme.csproj",
               "RelativeDocumentMoniker": "rpg_deneme.csproj",
@@ -184,7 +177,43 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 3,
+              "DocumentIndex": 0,
+              "Title": "FormMain.cs [Tasar\u0131m]",
+              "DocumentMoniker": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\FormMain.cs",
+              "RelativeDocumentMoniker": "FormMain.cs",
+              "ToolTip": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\FormMain.cs [Tasar\u0131m]",
+              "RelativeToolTip": "FormMain.cs [Tasar\u0131m]",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-01-07T22:54:02.279Z",
+              "EditorCaption": " [Tasar\u0131m]"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 5,
+              "Title": "UcArena.Skia.Rendering.cs",
+              "DocumentMoniker": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\UI\\Controls\\UcArena.Skia.Rendering.cs",
+              "RelativeDocumentMoniker": "UI\\Controls\\UcArena.Skia.Rendering.cs",
+              "ToolTip": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\UI\\Controls\\UcArena.Skia.Rendering.cs",
+              "RelativeToolTip": "UI\\Controls\\UcArena.Skia.Rendering.cs",
+              "ViewState": "AgIAAIwDAAAAAAAAAEBVwDYBAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-01-09T03:12:28.551Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 20,
+              "Title": "BattleEntity.cs",
+              "DocumentMoniker": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\Models\\BattleEntity.cs",
+              "RelativeDocumentMoniker": "Models\\BattleEntity.cs",
+              "ToolTip": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\Models\\BattleEntity.cs",
+              "RelativeToolTip": "Models\\BattleEntity.cs",
+              "ViewState": "AgIAAHMAAAAAAAAAAIBYwAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-01-09T16:11:19.508Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 6,
               "Title": "UcArena.Logic.cs",
               "DocumentMoniker": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\UI\\Controls\\UcArena.Logic.cs",
               "RelativeDocumentMoniker": "UI\\Controls\\UcArena.Logic.cs",
@@ -196,7 +225,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 18,
+              "DocumentIndex": 19,
               "Title": "EnemySpatialGrid.cs",
               "DocumentMoniker": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\UI\\Controls\\EnemySpatialGrid.cs",
               "RelativeDocumentMoniker": "UI\\Controls\\EnemySpatialGrid.cs",
@@ -208,7 +237,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 17,
+              "DocumentIndex": 18,
               "Title": "UcArena.RenderingHelpers.cs",
               "DocumentMoniker": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\UI\\Controls\\UcArena.RenderingHelpers.cs",
               "RelativeDocumentMoniker": "UI\\Controls\\UcArena.RenderingHelpers.cs",
@@ -220,7 +249,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 16,
+              "DocumentIndex": 17,
               "Title": "UcArena.LocalizationFix.cs",
               "DocumentMoniker": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\UI\\Controls\\UcArena.LocalizationFix.cs",
               "RelativeDocumentMoniker": "UI\\Controls\\UcArena.LocalizationFix.cs",
@@ -232,7 +261,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 6,
+              "DocumentIndex": 9,
               "Title": "ItemDrawer.cs",
               "DocumentMoniker": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\UI\\ItemDrawer.cs",
               "RelativeDocumentMoniker": "UI\\ItemDrawer.cs",
@@ -244,7 +273,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 9,
+              "DocumentIndex": 11,
               "Title": "SkillProjectile.cs",
               "DocumentMoniker": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\UI\\Controls\\GameEntities\\SkillProjectile.cs",
               "RelativeDocumentMoniker": "UI\\Controls\\GameEntities\\SkillProjectile.cs",
@@ -256,7 +285,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 5,
+              "DocumentIndex": 8,
               "Title": "UcBlacksmith.cs",
               "DocumentMoniker": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\UI\\Windows\\UcBlacksmith.cs",
               "RelativeDocumentMoniker": "UI\\Windows\\UcBlacksmith.cs",
@@ -268,7 +297,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 4,
+              "DocumentIndex": 7,
               "Title": "UcSurvivalLobby.cs",
               "DocumentMoniker": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\UI\\Windows\\UcSurvivalLobby.cs",
               "RelativeDocumentMoniker": "UI\\Windows\\UcSurvivalLobby.cs",
@@ -280,7 +309,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 10,
+              "DocumentIndex": 12,
               "Title": "UcArena.Input.cs",
               "DocumentMoniker": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\UI\\Controls\\UcArena.Input.cs",
               "RelativeDocumentMoniker": "UI\\Controls\\UcArena.Input.cs",
@@ -292,18 +321,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 11,
-              "Title": "FormMain.cs [Tasar\u0131m]",
-              "DocumentMoniker": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\FormMain.cs",
-              "RelativeDocumentMoniker": "FormMain.cs",
-              "ToolTip": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\FormMain.cs [Tasar\u0131m]",
-              "RelativeToolTip": "FormMain.cs [Tasar\u0131m]",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2026-01-07T22:54:02.279Z"
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 12,
+              "DocumentIndex": 13,
               "Title": "SkillManager.cs",
               "DocumentMoniker": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\Business\\SkillManager.cs",
               "RelativeDocumentMoniker": "Business\\SkillManager.cs",
@@ -315,7 +333,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 13,
+              "DocumentIndex": 14,
               "Title": "ConsumableManager.cs",
               "DocumentMoniker": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\Business\\ConsumableManager.cs",
               "RelativeDocumentMoniker": "Business\\ConsumableManager.cs",
@@ -327,7 +345,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 14,
+              "DocumentIndex": 15,
               "Title": "UcItemSlot.cs",
               "DocumentMoniker": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\UI\\Controls\\UcItemSlot.cs",
               "RelativeDocumentMoniker": "UI\\Controls\\UcItemSlot.cs",

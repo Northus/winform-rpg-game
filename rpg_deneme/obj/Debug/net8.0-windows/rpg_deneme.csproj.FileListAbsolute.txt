@@ -51,3 +51,4 @@ C:\Users\fatih\source\repos\rpg_deneme\rpg_deneme\bin\Debug\net8.0-windows\runti
 C:\Users\fatih\source\repos\rpg_deneme\rpg_deneme\bin\Debug\net8.0-windows\runtimes\win-x64\native\libSkiaSharp.dll
 C:\Users\fatih\source\repos\rpg_deneme\rpg_deneme\bin\Debug\net8.0-windows\runtimes\win-x86\native\libSkiaSharp.dll
 C:\Users\fatih\source\repos\rpg_deneme\rpg_deneme\obj\Debug\net8.0-windows\rpg_deneme.sourcelink.json
+C:\Users\fatih\source\repos\rpg_deneme\rpg_deneme\obj\Debug\net8.0-windows\rpg_deneme.UI.Windows.FormSkills.resources
