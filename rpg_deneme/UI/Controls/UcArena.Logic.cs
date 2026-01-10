@@ -219,6 +219,13 @@ public partial class UcArena
     private List<SkillModel> _cachedLearnedSkills;
     private long _lastSkillFetchTicks;
 
+    public void RefreshGameState(CharacterModel hero)
+    {
+        _hero = hero;
+        LoadHotbarFromSession();
+        RecalculatePlayerStats();
+    }
+
     public void RecalculatePlayerStats()
     {
         if (_hero == null || _player == null) return;
@@ -941,8 +948,13 @@ public partial class UcArena
     {
         if (_hero == null) return;
         List<ItemInstance> inv = _invManager.GetInventory(_hero.CharacterID);
+
+        SkillManager sm = new SkillManager();
+        var skills = sm.LoadSkillsForClass((Enums.CharacterClass)_hero.Class, _hero.CharacterID);
+
         for (int i = 0; i < 5; i++)
         {
+            var oldSkill = _hotbar[i].Skill; // Preserve old skill to keep LastCastTime
             HotbarInfo info = SessionManager.HotbarSlots[i];
 
             _hotbar[i].Type = 0;
@@ -964,12 +976,16 @@ public partial class UcArena
                 }
                 else if (info.Type == 1)
                 {
-                    SkillManager sm = new SkillManager();
-                    var skills = sm.LoadSkillsForClass((Enums.CharacterClass)_hero.Class, _hero.CharacterID);
                     _hotbar[i].Skill = skills.FirstOrDefault(s => s.SkillID == info.ReferenceId);
 
                     if (_hotbar[i].Skill != null)
                     {
+                        // Restore LastCastTime if it's the same skill
+                        if (oldSkill != null && oldSkill.SkillID == _hotbar[i].Skill.SkillID)
+                        {
+                            _hotbar[i].Skill.LastCastTime = oldSkill.LastCastTime;
+                        }
+
                         Bitmap bmp = new Bitmap(40, 40);
                         using (Graphics gw = Graphics.FromImage(bmp))
                         {
@@ -1007,6 +1023,7 @@ public partial class UcArena
             }
         }
     }
+
 
     private void SaveHotbarToSession()
     {
@@ -1053,7 +1070,7 @@ public partial class UcArena
             if (item.RemainingCooldownSeconds > 0) return;
 
             ConsumableManager cm = new ConsumableManager();
-            if (cm.UseItem(_hero, item).Success)
+            if (cm.UseItem(_hero, item, _learnedSkills).Success)
             {
                 _effects.Add(new VisualEffect
                 {
@@ -1084,7 +1101,7 @@ public partial class UcArena
 
             if (slot.Skill.RemainingCooldown > 0)
             {
-                NotificationManager.AddNotification($"Cooldown: {slot.Skill.RemainingCooldown:F1}s", Color.Yellow);
+                // NotificationManager.AddNotification($"Cooldown: {slot.Skill.RemainingCooldown:F1}s", Color.Yellow); // REMOVED as requested
                 return;
             }
 

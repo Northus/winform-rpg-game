@@ -3,6 +3,8 @@ using rpg_deneme.Core;
 using rpg_deneme.Data;
 using rpg_deneme.Models;
 
+using System.Collections.Generic;
+
 namespace rpg_deneme.Business;
 
 public class ConsumableManager
@@ -11,13 +13,24 @@ public class ConsumableManager
 
     private CharacterRepository _charRepo = new CharacterRepository();
 
-    public (bool Success, string Message) UseItem(CharacterModel hero, ItemInstance item)
+    public (bool Success, string Message) UseItem(CharacterModel hero, ItemInstance item, List<SkillModel> skills = null)
     {
+        if (item.Count <= 0)
+        {
+            return (Success: false, Message: "Eşya tükendi!");
+        }
         if (item.RemainingCooldownSeconds > 0)
         {
             return (Success: false, Message: $"Henüz hazır değil! ({item.RemainingCooldownSeconds} sn)");
         }
-        if (ApplyEffect(hero, item))
+
+        if (skills == null)
+        {
+            SkillManager sm = new SkillManager();
+            skills = sm.LoadSkillsForClass((Enums.CharacterClass)hero.Class, hero.CharacterID);
+        }
+
+        if (ApplyEffect(hero, item, skills))
         {
             if (item.Cooldown > 0)
             {
@@ -32,7 +45,7 @@ public class ConsumableManager
         return (Success: false, Message: "Bu eşya şu an kullanılamaz.");
     }
 
-    private bool ApplyEffect(CharacterModel hero, ItemInstance item)
+    private bool ApplyEffect(CharacterModel hero, ItemInstance item, List<SkillModel> skills)
     {
         // Calculate Total Max Stats using Equipment
         InventoryManager invManager = new InventoryManager();
@@ -43,7 +56,7 @@ public class ConsumableManager
         {
             case Enums.ItemEffectType.RestoreHP:
                 {
-                    int maxHP = StatManager.CalculateTotalMaxHP(hero, equipment);
+                    int maxHP = StatManager.CalculateTotalMaxHP(hero, equipment, skills);
                     if (hero.HP >= maxHP)
                     {
                         return false;
@@ -57,7 +70,7 @@ public class ConsumableManager
                 }
             case Enums.ItemEffectType.RestoreMana:
                 {
-                    int maxMana = StatManager.CalculateTotalMaxMana(hero, equipment);
+                    int maxMana = StatManager.CalculateTotalMaxMana(hero, equipment, skills);
                     if (hero.Mana >= maxMana)
                     {
                         return false;

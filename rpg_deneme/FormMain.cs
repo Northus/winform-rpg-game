@@ -441,7 +441,7 @@ public class FormMain : Form
             if (_ucStorage != null && _ucStorage.Visible) { _ucStorage.LoadStorage(); }
             if (_ucBlacksmith != null && _ucBlacksmith.Visible) { _ucBlacksmith.RefreshFromDb(); }
             if (_currentScreen is UcExploration exploreScreen) { exploreScreen.RefreshBattleStats(); }
-            else if (_currentScreen is UcArena townArena) { townArena.RecalculatePlayerStats(); }
+            else if (_currentScreen is UcArena townArena) { townArena.RefreshGameState(_hero); }
         }
     }
 
