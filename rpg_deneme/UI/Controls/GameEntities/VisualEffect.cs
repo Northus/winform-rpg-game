@@ -31,4 +31,5 @@ public class VisualEffect
     public float Angle; // Direction for directional effects
     public int SkillVisualType; // 0=neutral, 1=fire, 2=ice, 3=arcane
     public int InitialLifeTime; // Store initial lifetime for progress calculation
+    public int StartDelay; // Delay before the effect starts rendering/updating
 }

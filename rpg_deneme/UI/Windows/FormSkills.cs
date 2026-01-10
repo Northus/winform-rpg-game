@@ -260,14 +260,20 @@ public class FormSkills : GameWindow
             return;
         }
 
+        // Calculate Total Points: 6 (Start) + (Level - 1) * 3
+        int totalPoints = 6 + ((_character.Level - 1) * 3);
+
+        if (_character.SkillPoints == totalPoints)
+        {
+            MessageBox.Show("Sıfırlanacak dağıtılmış puanınız yok!", "Hata", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
         var result = MessageBox.Show($"Yetenekleri sıfırlamak istiyor musun?\nBedel: {resetCost} Gold\nBütün yetenek puanların iade edilecek.", "Sıfırla", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
         if (result == DialogResult.Yes)
         {
             // Reset Logic
             _character.Gold -= resetCost;
-
-            // Calculate Total Points: 6 (Start) + (Level - 1) * 3
-            int totalPoints = 6 + ((_character.Level - 1) * 3);
             _character.SkillPoints = totalPoints;
 
             // Reset Skills in DB
@@ -276,6 +282,15 @@ public class FormSkills : GameWindow
             // Reset Hotbar Skills in DB
             HotbarRepository hbRepo = new HotbarRepository();
             hbRepo.RemoveSkillSlots(_character.CharacterID);
+
+            // Clear Session Hotbar Slots immediately
+            for (int i = 0; i < 5; i++)
+            {
+                if (SessionManager.HotbarSlots[i] != null && SessionManager.HotbarSlots[i].Type == 1)
+                {
+                    SessionManager.HotbarSlots[i] = null;
+                }
+            }
 
             // Reset Local Skills List
             foreach (var s in _skills)

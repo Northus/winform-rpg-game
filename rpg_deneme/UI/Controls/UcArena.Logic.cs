@@ -1235,6 +1235,7 @@ public partial class UcArena
                             .ToList();
 
                         float lastX = _player.Center.X, lastY = _player.Center.Y;
+                        int i = 0;
                         foreach (var target in targets)
                         {
                             _effects.Add(new VisualEffect
@@ -1246,13 +1247,15 @@ public partial class UcArena
                                 TargetY = target.Center.Y,
                                 Color = Color.Yellow,
                                 LifeTime = 20,
-                                InitialLifeTime = 20
+                                InitialLifeTime = 20,
+                                StartDelay = i * 5 // Delay each bounce by 5 frames
                             });
 
                             ApplyDamageToEnemy(target, finalDmg, isCrit);
                             lastX = target.Center.X;
                             lastY = target.Center.Y;
                             finalDmg = (int)(finalDmg * 0.8);
+                            i++; // Increment counter for delay
                         }
                         skillSuccess = targets.Count > 0;
                     }
@@ -1295,8 +1298,8 @@ public partial class UcArena
                         EffectType = effectType,
                         Size = (int)range,
                         Color = slashColor,
-                        LifeTime = 15,
-                        InitialLifeTime = 15,
+                        LifeTime = 30,
+                        InitialLifeTime = 30,
                         Angle = facingAngle,
                         MaxRadius = (int)range
                     });
@@ -1472,6 +1475,18 @@ public partial class UcArena
         for (int i = 0; i < effectCount; i++)
         {
             var fx = _effects[i];
+            if (fx.StartDelay > 0)
+            {
+                fx.StartDelay--;
+                // Keep alive (in list) but don't process lifetime or movement yet
+                if (writeIndex != i)
+                {
+                    _effects[writeIndex] = fx;
+                }
+                writeIndex++;
+                continue;
+            }
+
             fx.LifeTime--;
 
             if (fx.IsText)

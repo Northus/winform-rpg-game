@@ -662,6 +662,8 @@ public partial class UcArena
             alpha = Math.Clamp(alpha, 0, 255);
             var c = ToSK(effect.Color).WithAlpha((byte)alpha);
 
+            if (effect.StartDelay > 0) continue;
+
             if (effect.IsText)
             {
                 float yOffset = progress * 15f;
@@ -679,6 +681,149 @@ public partial class UcArena
                 }
 
                 canvas.DrawText(effect.Text ?? string.Empty, effect.X, effect.Y - yOffset, _effectTextPaint);
+                continue;
+            }
+
+            if (effect.EffectType == 15) // Lightning Chain
+            {
+                // Draw a jagged line from X,Y to TargetX,TargetY
+                var start = new SKPoint(effect.X, effect.Y);
+                var end = new SKPoint(effect.TargetX, effect.TargetY);
+                float dist = SKPoint.Distance(start, end);
+
+                using var path = new SKPath();
+                path.MoveTo(start);
+
+                int segments = Math.Max(2, (int)(dist / 20));
+                float dx = (end.X - start.X) / segments;
+                float dy = (end.Y - start.Y) / segments;
+
+                // Randomize based on ID or coords + time to make it flicker
+                var rnd = new Random(effect.GetHashCode() + _animCounter);
+
+                for (int s = 1; s < segments; s++)
+                {
+                    float px = start.X + dx * s;
+                    float py = start.Y + dy * s;
+                    float offset = (float)(rnd.NextDouble() - 0.5) * 20f; // +/- 10px jitter
+
+                    // Perpendicular offset
+                    float perpX = -dy;
+                    float perpY = dx;
+                    // Normalize perp
+                    float len = (float)Math.Sqrt(perpX * perpX + perpY * perpY);
+                    if (len > 0.001f)
+                    {
+                        perpX /= len;
+                        perpY /= len;
+                    }
+                    path.LineTo(px + perpX * offset, py + perpY * offset);
+                }
+                path.LineTo(end);
+
+                // Main bolt
+                canvas.DrawPath(path, GetStroke(SKColors.Yellow, 2f));
+                // Glow
+                canvas.DrawPath(path, GetStroke(new SKColor(255, 255, 200, 100), 4f));
+                continue;
+            }
+
+            if (effect.EffectType == 12) // Fire Burst (Meteor/Fireball AoE)
+            {
+                float radius = effect.Size * (0.5f + progress * 0.5f);
+                canvas.DrawOval(effect.X, effect.Y, radius, radius, GetFill(new SKColor(255, 69, 0, 100))); // RedOrange
+                canvas.DrawOval(effect.X, effect.Y, radius * 0.7f, radius * 0.7f, GetFill(new SKColor(255, 140, 0, 150))); // DarkOrange
+
+                // Expanding ring
+                canvas.DrawOval(effect.X, effect.Y, radius, radius, GetStroke(SKColors.Orange, 2f));
+                continue;
+            }
+
+            if (effect.EffectType == 13) // Ice Shatter/Nova
+            {
+                float radius = effect.Size * (progress);
+                canvas.DrawOval(effect.X, effect.Y, radius, radius, GetFill(new SKColor(173, 216, 230, 80))); // LightBlue
+
+                // Spikes/Cross
+                float spikeLen = radius;
+                var p = GetStroke(SKColors.White, 2f);
+                canvas.DrawLine(effect.X - spikeLen, effect.Y, effect.X + spikeLen, effect.Y, p);
+                canvas.DrawLine(effect.X, effect.Y - spikeLen, effect.X, effect.Y + spikeLen, p);
+                canvas.DrawLine(effect.X - spikeLen * 0.7f, effect.Y - spikeLen * 0.7f, effect.X + spikeLen * 0.7f, effect.Y + spikeLen * 0.7f, p);
+                canvas.DrawLine(effect.X - spikeLen * 0.7f, effect.Y + spikeLen * 0.7f, effect.X + spikeLen * 0.7f, effect.Y - spikeLen * 0.7f, p);
+
+                canvas.DrawOval(effect.X, effect.Y, radius, radius, GetStroke(SKColors.Cyan, 1));
+                continue;
+            }
+
+            if (effect.EffectType == 14) // Arcane Nova
+            {
+                float radius = effect.Size * progress;
+                // Dark void
+                canvas.DrawOval(effect.X, effect.Y, radius, radius, GetFill(new SKColor(75, 0, 130, 100)));
+                // Purple ring
+                canvas.DrawOval(effect.X, effect.Y, radius, radius, GetStroke(SKColors.Magenta, 2f));
+                // Inner pulse
+                canvas.DrawOval(effect.X, effect.Y, radius * 0.5f, radius * 0.5f, GetFill(new SKColor(148, 0, 211, 150)));
+                continue;
+            }
+
+            if (effect.EffectType == 10) // Slash
+            {
+                // Directional arc
+                // Angle is in radians
+                float radius = effect.Size;
+                using var path = new SKPath();
+                var rect = new SKRect(effect.X - radius, effect.Y - radius, effect.X + radius, effect.Y + radius);
+
+                float startAngleDeg = (float)(effect.Angle * 180 / Math.PI);
+                path.AddArc(rect, startAngleDeg - 45, 90);
+
+                canvas.DrawPath(path, GetStroke(ToSK(effect.Color), 3f));
+
+                // Inner faint swipe
+                radius *= 0.8f;
+                rect = new SKRect(effect.X - radius, effect.Y - radius, effect.X + radius, effect.Y + radius);
+                using var path2 = new SKPath();
+                path2.AddArc(rect, startAngleDeg - 45, 90);
+                canvas.DrawPath(path2, GetStroke(ToSK(effect.Color).WithAlpha(100), 1f));
+                continue;
+            }
+
+            if (effect.EffectType == 11) // Whirlwind (Dönme Dolap)
+            {
+                float radius = effect.Size;
+                // Faster rotation: 30 degrees per tick
+                float rot = (effect.InitialLifeTime - effect.LifeTime) * 30f;
+
+                // Get cached paint (do NOT use 'using', handled by cache)
+                var p = GetStroke(ToSK(effect.Color), 4f);
+                var pInner = GetStroke(SKColors.White.WithAlpha(150), 2f);
+
+                canvas.Save();
+                canvas.Translate(effect.X, effect.Y);
+                canvas.RotateDegrees(rot);
+
+                // Draw 3 spinning blades
+                for (int k = 0; k < 3; k++)
+                {
+                    canvas.RotateDegrees(120);
+
+                    // A curved blade shape
+                    using var path = new SKPath();
+                    path.MoveTo(0, 0);
+                    // Control point to curve it
+                    path.QuadTo(radius * 0.5f, radius * 0.2f, radius, 0);
+
+                    canvas.DrawPath(path, p);
+                    canvas.DrawPath(path, pInner);
+                }
+
+                // Draw a faint "tornado" circle underneath
+                var fill = GetFill(ToSK(effect.Color).WithAlpha(50));
+                canvas.DrawOval(0, 0, radius, radius, fill);
+
+                canvas.Restore();
                 continue;
             }
 

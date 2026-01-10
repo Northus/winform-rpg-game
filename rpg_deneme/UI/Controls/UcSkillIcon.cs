@@ -101,9 +101,19 @@ public class UcSkillIcon : UserControl
         else if (_canLearn) bgColor = Color.LimeGreen;
         else bgColor = Color.FromArgb(70, 70, 70);
 
-        using (SolidBrush b = new SolidBrush(bgColor))
+        if (Skill.Type == Core.Enums.SkillType.Active)
         {
-            g.FillEllipse(b, 2, 2, 36, 36);
+            using (SolidBrush b = new SolidBrush(bgColor))
+            {
+                g.FillRectangle(b, 2, 2, 36, 36);
+            }
+        }
+        else
+        {
+            using (SolidBrush b = new SolidBrush(bgColor))
+            {
+                g.FillEllipse(b, 2, 2, 36, 36);
+            }
         }
 
         // Draw Icon Image
@@ -137,7 +147,14 @@ public class UcSkillIcon : UserControl
 
         using (Pen p = new Pen(borderColor, 2))
         {
-            g.DrawEllipse(p, 2, 2, 36, 36);
+            if (Skill.Type == Core.Enums.SkillType.Active)
+            {
+                g.DrawRectangle(p, 2, 2, 36, 36);
+            }
+            else
+            {
+                g.DrawEllipse(p, 2, 2, 36, 36);
+            }
         }
 
         // Level Indicator

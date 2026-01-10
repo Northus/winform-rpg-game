@@ -189,7 +189,8 @@ public class CharacterRepository
                     StatPoints = @sp,
                     SkillPoints = @skillSp,
                     CurrentHP = @hp,
-                    CurrentMana = @mana
+                    CurrentMana = @mana,
+                    Gold = @gold
                 WHERE CharacterID = @id";
         using SqliteCommand cmd = new SqliteCommand(sql, conn);
         cmd.Parameters.AddWithValue("@lvl", hero.Level);
@@ -198,6 +199,7 @@ public class CharacterRepository
         cmd.Parameters.AddWithValue("@skillSp", hero.SkillPoints);
         cmd.Parameters.AddWithValue("@hp", hero.HP);
         cmd.Parameters.AddWithValue("@mana", hero.Mana);
+        cmd.Parameters.AddWithValue("@gold", hero.Gold);
         cmd.Parameters.AddWithValue("@id", hero.CharacterID);
         cmd.ExecuteNonQuery();
     }
