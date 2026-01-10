@@ -532,8 +532,8 @@ public class FormMain : Form
         {
             _townArena = new UcArena();
             _townArena.Dock = DockStyle.Fill;
+            _townArena.OnStatsUpdated += delegate { RefreshStats(); };
         }
-        _townArena.OnStatsUpdated += delegate { RefreshStats(); };
         SwitchScreen(_townArena);
         _townArena.StartSurvivalBattle(_hero, enemies);
         _townArena.OnBattleEnded -= SurvivalBattleEnded;
