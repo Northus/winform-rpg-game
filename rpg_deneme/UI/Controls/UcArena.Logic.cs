@@ -288,9 +288,12 @@ public partial class UcArena
 
         var passiveBonus = StatManager.CalculatePassiveBonuses(_learnedSkills);
         _manaRegenAmount += (int)passiveBonus.ManaRegenBonus;
+        _hpRegenAmount = (float)passiveBonus.HPRegenBonus;
+        _lifeStealPercent = passiveBonus.LifeStealPercent;
 
         NotificationManager.ClearBuffs();
         if (_manaRegenAmount > 0) NotificationManager.AddBuff($"Mana Regen: {_manaRegenAmount}/3sn", "ManaRegen", _manaRegenAmount);
+        if (_hpRegenAmount > 0) NotificationManager.AddBuff($"HP Regen: {_hpRegenAmount:F1}/3sn", "HPRegen", (int)_hpRegenAmount);
 
         int newMaxHP = StatManager.CalculateTotalMaxHP(_hero, equipment, _learnedSkills);
         int oldMaxHP = _player.MaxHP;
@@ -460,6 +463,35 @@ public partial class UcArena
                 }
             }
 
+            // HP Regen wait same interval
+            _hpRegenTimer++;
+            if (_hpRegenTimer >= 180)
+            {
+                _hpRegenTimer = 0;
+                if (_hpRegenAmount > 0 && _player.CurrentHP < _player.MaxHP)
+                {
+                    _player.CurrentHP += (int)_hpRegenAmount;
+                    if (_player.CurrentHP > _player.MaxHP) _player.CurrentHP = _player.MaxHP;
+                    _hero.HP = _player.CurrentHP;
+                    _statsDirty = true;
+
+                    // Visual feedback
+                    if (_effects.Count < 30)
+                    {
+                        _effects.Add(new VisualEffect
+                        {
+                            X = _player.Center.X,
+                            Y = _player.Center.Y,
+                            IsText = true,
+                            Text = $"+{(int)_hpRegenAmount}",
+                            Color = Color.LimeGreen,
+                            Size = 10,
+                            LifeTime = 40
+                        });
+                    }
+                }
+            }
+
             // Sync stats to UI throttled
             if (_statsDirty && _animCounter % 10 == 0)
             {
@@ -497,11 +529,42 @@ public partial class UcArena
         for (int i = 0; i < enemyCount; i++)
         {
             BattleEntity enemy = _enemies[i];
+            if (enemy.BurnTimer > 0)
+            {
+                enemy.BurnTimer--;
+                if (enemy.BurnTimer % 60 == 0) // 1 second tick
+                {
+                    enemy.CurrentHP -= 5; // Flat burn damage
+                    _effects.Add(new VisualEffect { X = enemy.X, Y = enemy.Y - 10, IsText = true, Text = "5", Color = Color.OrangeRed, Size = 9, LifeTime = 30 });
+                }
+            }
+            if (enemy.PoisonTimer > 0)
+            {
+                enemy.PoisonTimer--;
+                if (enemy.PoisonTimer % 60 == 0)
+                {
+                    enemy.CurrentHP -= 3; // Poison damage
+                    _effects.Add(new VisualEffect { X = enemy.X, Y = enemy.Y - 10, IsText = true, Text = "3", Color = Color.LimeGreen, Size = 9, LifeTime = 30 });
+                }
+            }
+            if (enemy.StunTimer > 0) enemy.StunTimer--;
+            if (enemy.FreezeTimer > 0) enemy.FreezeTimer--;
+            if (enemy.SlowTimer > 0) enemy.SlowTimer--;
+            if (enemy.ShockTimer > 0) enemy.ShockTimer--;
+            if (enemy.WeaknessTimer > 0) enemy.WeaknessTimer--;
+
             if (enemy.CurrentHP <= 0)
             {
                 continue;
             }
             aliveCount++;
+
+            // Skip movement if stunned or frozen
+            if (enemy.IsStunned || enemy.IsFrozen)
+            {
+                enemy.IsMoving = false;
+                continue;
+            }
 
             float enemyCenterX = enemy.Center.X;
             float enemyCenterY = enemy.Center.Y;
@@ -590,8 +653,11 @@ public partial class UcArena
                 moveY = 0f;
             }
 
-            enemy.VX = Lerp(enemy.VX, moveX * enemy.Speed, 0.18f);
-            enemy.VY = Lerp(enemy.VY, moveY * enemy.Speed, 0.18f);
+            float currentSpeed = enemy.Speed;
+            if (enemy.IsSlowed) currentSpeed *= 0.5f;
+
+            enemy.VX = Lerp(enemy.VX, moveX * currentSpeed, 0.18f);
+            enemy.VY = Lerp(enemy.VY, moveY * currentSpeed, 0.18f);
 
             enemy.X += enemy.VX;
             enemy.Y += enemy.VY;
@@ -794,7 +860,7 @@ public partial class UcArena
                                         float dist = MathF.Sqrt(distSq);
                                         float dmgMult = 1f - (dist / proj.AoERadius) * 0.5f;
                                         int aoeDmg = (int)(proj.Damage * dmgMult);
-                                        ApplyDamageToEnemy(target, aoeDmg, proj.IsCrit);
+                                        ApplyDamageToEnemy(target, aoeDmg, proj.IsCrit, proj.SecondaryEffect);
                                     }
                                 }
 
@@ -828,7 +894,7 @@ public partial class UcArena
                             }
                             else
                             {
-                                ApplyDamageToEnemy(en, proj.Damage, proj.IsCrit);
+                                ApplyDamageToEnemy(en, proj.Damage, proj.IsCrit, proj.SecondaryEffect);
                             }
                             hit = true;
                             break;
@@ -892,9 +958,79 @@ public partial class UcArena
     }
 
     // Flag for deferred DB save
-    private void ApplyDamageToEnemy(BattleEntity target, int dmg, bool isCrit = false)
+    private void ApplyDamageToEnemy(BattleEntity target, int dmg, bool isCrit = false, Enums.SkillSecondaryEffect secondaryEffect = Enums.SkillSecondaryEffect.None, float effectAmount = 0)
     {
+        // Check invulnerability or status
+
+        // Critical Bonus
+        if (isCrit)
+        {
+            dmg = (int)(dmg * 1.5f);
+        }
+
+        // Apply Status Effects logic
+        switch (secondaryEffect)
+        {
+            case Enums.SkillSecondaryEffect.Burn:
+                if (target.BurnTimer <= 0)
+                {
+                    target.BurnTimer = 180; // 3 seconds
+                    _effects.Add(new VisualEffect { X = target.X, Y = target.Y - 20, IsText = true, Text = "YANMA", Color = Color.OrangeRed, Size = 10, LifeTime = 40 });
+                }
+                break;
+            case Enums.SkillSecondaryEffect.Freeze:
+                target.FreezeTimer = 120; // 2 seconds
+                _effects.Add(new VisualEffect { X = target.X, Y = target.Y - 20, IsText = true, Text = "DONDU", Color = Color.Cyan, Size = 10, LifeTime = 40 });
+                break;
+            case Enums.SkillSecondaryEffect.Stun:
+                target.StunTimer = 60; // 1 second
+                _effects.Add(new VisualEffect { X = target.X, Y = target.Y - 20, IsText = true, Text = "SERSEM", Color = Color.Yellow, Size = 10, LifeTime = 40 });
+                break;
+            case Enums.SkillSecondaryEffect.Poison:
+                if (target.PoisonTimer <= 0)
+                {
+                    target.PoisonTimer = 300; // 5 seconds
+                    _effects.Add(new VisualEffect { X = target.X, Y = target.Y - 20, IsText = true, Text = "ZEHİR", Color = Color.LimeGreen, Size = 10, LifeTime = 40 });
+                }
+                break;
+            case Enums.SkillSecondaryEffect.Slow:
+                target.SlowTimer = 180; // 3 seconds
+                break;
+            case Enums.SkillSecondaryEffect.Shock:
+                target.ShockTimer = 120;
+                // Shock increases damage taken
+                dmg = (int)(dmg * 1.2f);
+                break;
+        }
+
         target.CurrentHP -= dmg;
+
+        // Life Steal
+        if (_lifeStealPercent > 0 && _player.CurrentHP < _player.MaxHP)
+        {
+            int heal = (int)(dmg * (_lifeStealPercent / 100f));
+            if (heal > 0)
+            {
+                _player.CurrentHP += heal;
+                if (_player.CurrentHP > _player.MaxHP) _player.CurrentHP = _player.MaxHP;
+                _hero.HP = _player.CurrentHP;
+
+                // Visual for LS
+                if (_effects.Count < 50 && _rnd.NextDouble() < 0.3)
+                {
+                    _effects.Add(new VisualEffect
+                    {
+                        X = _player.Center.X,
+                        Y = _player.Center.Y,
+                        Text = $"+{heal}",
+                        Color = Color.Lime,
+                        IsText = true,
+                        Size = 10,
+                        LifeTime = 30
+                    });
+                }
+            }
+        }
 
         // Limit effects to reduce rendering load
         if (_effects.Count < 50)
@@ -1215,6 +1351,8 @@ public partial class UcArena
                 bool isCrit = _rnd.Next(100) < critChance;
                 if (isCrit) finalDmg *= 2;
 
+                Enums.SkillSecondaryEffect secEffect = slot.Skill.SecondaryEffect;
+
                 if (isMage)
                 {
                     int vType = 0;
@@ -1251,7 +1389,7 @@ public partial class UcArena
                                 StartDelay = i * 5 // Delay each bounce by 5 frames
                             });
 
-                            ApplyDamageToEnemy(target, finalDmg, isCrit);
+                            ApplyDamageToEnemy(target, finalDmg, isCrit, secEffect);
                             lastX = target.Center.X;
                             lastY = target.Center.Y;
                             finalDmg = (int)(finalDmg * 0.8);
@@ -1264,12 +1402,13 @@ public partial class UcArena
                         var proj = new SkillProjectile(_player.Center.X, _player.Center.Y, _mousePos.X, _mousePos.Y, finalDmg, enemy: false, isCrit: isCrit, visualType: vType);
                         proj.IsAoE = true;
                         proj.AoERadius = 60 + (slot.Skill.CurrentLevel * 10);
+                        proj.SecondaryEffect = secEffect;
                         _projectiles.Add(proj);
                         skillSuccess = true;
                     }
                     else
                     {
-                        _projectiles.Add(new SkillProjectile(_player.Center.X, _player.Center.Y, _mousePos.X, _mousePos.Y, finalDmg, enemy: false, isCrit: isCrit, visualType: vType));
+                        _projectiles.Add(new SkillProjectile(_player.Center.X, _player.Center.Y, _mousePos.X, _mousePos.Y, finalDmg, enemy: false, isCrit: isCrit, visualType: vType) { SecondaryEffect = secEffect });
                         skillSuccess = true;
                     }
                 }
@@ -1306,9 +1445,9 @@ public partial class UcArena
 
                     int hitCount = 0;
                     float rangeSq = range * range;
-                    for (int ei = 0; ei < _enemies.Count; ei++)
+                    for (int k = 0; k < _enemies.Count; k++)
                     {
-                        var entity = _enemies[ei];
+                        var entity = _enemies[k];
                         if (entity.CurrentHP <= 0) continue;
 
                         float edx = entity.Center.X - _player.Center.X;
@@ -1319,7 +1458,7 @@ public partial class UcArena
                         {
                             if (isAoEMelee)
                             {
-                                ApplyDamageToEnemy(entity, finalDmg, isCrit);
+                                ApplyDamageToEnemy(entity, finalDmg, isCrit, secEffect);
                                 hitCount++;
                             }
                             else
@@ -1330,7 +1469,7 @@ public partial class UcArena
 
                                 if (angleDiff < Math.PI / 3)
                                 {
-                                    ApplyDamageToEnemy(entity, finalDmg, isCrit);
+                                    ApplyDamageToEnemy(entity, finalDmg, isCrit, secEffect);
                                     hitCount++;
                                 }
                             }
@@ -1530,6 +1669,40 @@ public partial class UcArena
         {
             BattleEntity enemy = _enemies[i];
             if (enemy.CurrentHP <= 0) continue;
+
+            // Status Effects Logic
+            if (enemy.BurnTimer > 0)
+            {
+                enemy.BurnTimer--;
+                if (enemy.BurnTimer % 60 == 0)
+                {
+                    enemy.CurrentHP -= 5;
+                    _effects.Add(new VisualEffect { X = enemy.X, Y = enemy.Y - 10, IsText = true, Text = "5", Color = Color.OrangeRed, Size = 9, LifeTime = 30 });
+                }
+            }
+            if (enemy.PoisonTimer > 0)
+            {
+                enemy.PoisonTimer--;
+                if (enemy.PoisonTimer % 60 == 0)
+                {
+                    enemy.CurrentHP -= 3;
+                    _effects.Add(new VisualEffect { X = enemy.X, Y = enemy.Y - 10, IsText = true, Text = "3", Color = Color.LimeGreen, Size = 9, LifeTime = 30 });
+                }
+            }
+            if (enemy.StunTimer > 0) enemy.StunTimer--;
+            if (enemy.FreezeTimer > 0) enemy.FreezeTimer--;
+            if (enemy.SlowTimer > 0) enemy.SlowTimer--;
+            if (enemy.ShockTimer > 0) enemy.ShockTimer--;
+            if (enemy.WeaknessTimer > 0) enemy.WeaknessTimer--;
+
+            if (enemy.CurrentHP <= 0) continue;
+
+            // Skip movement if stunned or frozen
+            if (enemy.IsStunned || enemy.IsFrozen)
+            {
+                enemy.IsMoving = false;
+                continue;
+            }
             aliveCount++;
 
             float enemyCenterX = enemy.X + enemy.Width / 2f;
@@ -1642,8 +1815,11 @@ public partial class UcArena
                 moveX = 0f; moveY = 0f;
             }
 
-            enemy.VX = Lerp(enemy.VX, moveX * enemy.Speed, 0.2f);
-            enemy.VY = Lerp(enemy.VY, moveY * enemy.Speed, 0.2f);
+            float currentSpeed = enemy.Speed;
+            if (enemy.IsSlowed) currentSpeed *= 0.5f;
+
+            enemy.VX = Lerp(enemy.VX, moveX * currentSpeed, 0.2f);
+            enemy.VY = Lerp(enemy.VY, moveY * currentSpeed, 0.2f);
 
             enemy.X += enemy.VX;
             enemy.Y += enemy.VY;

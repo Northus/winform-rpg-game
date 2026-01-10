@@ -116,4 +116,20 @@ public class BattleEntity
 
     // Per-entity attack cooldown
     public int AttackCooldown { get; set; }
+
+    // Status Effects (Debuffs) Timers (in frames)
+    public int BurnTimer { get; set; }
+    public int SlowTimer { get; set; }
+    public int StunTimer { get; set; }
+    public int PoisonTimer { get; set; }
+    public int FreezeTimer { get; set; }
+    public int ShockTimer { get; set; }
+    public int BleedTimer { get; set; }
+    public int WeaknessTimer { get; set; }
+
+    public bool IsStunned => StunTimer > 0;
+    public bool IsFrozen => FreezeTimer > 0;
+    public bool IsSlowed => SlowTimer > 0;
+    public bool IsShocked => ShockTimer > 0;
+    public bool IsWeak => WeaknessTimer > 0;
 }

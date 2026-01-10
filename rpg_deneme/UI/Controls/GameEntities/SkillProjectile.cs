@@ -20,9 +20,10 @@ public class SkillProjectile
 
     public int VisualType = 0;
     public Color CustomColor = Color.Empty;
+    public Core.Enums.SkillSecondaryEffect SecondaryEffect = Core.Enums.SkillSecondaryEffect.None;
 
     public int AnimTick = 0;
- 
+
     // Simple trail array - direct access, no abstraction overhead
     private readonly PointF[] _trailBuffer = new PointF[8];
     private int _trailHead = 0;  // where to write next
@@ -30,12 +31,12 @@ public class SkillProjectile
 
     // Direct access methods for trail - avoid interface/struct overhead
     public int TrailCount => _trailCount;
-    
+
     public PointF GetTrailPoint(int index)
     {
         if (index < 0 || index >= _trailCount) return default;
         // oldest to newest: start from (head - count) and go forward
-     int actualIndex = (_trailHead - _trailCount + index + 8) % 8;
+        int actualIndex = (_trailHead - _trailCount + index + 8) % 8;
         return _trailBuffer[actualIndex];
     }
 
@@ -43,20 +44,20 @@ public class SkillProjectile
     {
         X = x;
         Y = y;
-    Damage = dmg;
+        Damage = dmg;
         IsEnemy = enemy;
         IsCrit = isCrit;
-  VisualType = visualType;
+        VisualType = visualType;
 
         Size = visualType switch
-    {
-   1 => 14,
-     2 => 10,
-   3 => 12,
+        {
+            1 => 14,
+            2 => 10,
+            3 => 12,
             _ => enemy ? 8 : 10
         };
 
-   float spd = enemy ? 5f : 9f;
+        float spd = enemy ? 5f : 9f;
         if (visualType == 1) spd = 11f;
         if (visualType == 2) spd = 13f;
         if (visualType == 3) spd = 10f;
@@ -65,18 +66,18 @@ public class SkillProjectile
         float dy = ty - y;
         float dist = MathF.Sqrt(dx * dx + dy * dy);
         if (dist < 1f) dist = 1f;
-    DX = dx / dist * spd;
+        DX = dx / dist * spd;
         DY = dy / dist * spd;
     }
 
     public void Move()
- {
-    // Add current position to circular buffer
+    {
+        // Add current position to circular buffer
         _trailBuffer[_trailHead] = new PointF(X, Y);
         _trailHead = (_trailHead + 1) % 8;
         if (_trailCount < 8) _trailCount++;
 
-     X += DX;
+        X += DX;
         Y += DY;
         AnimTick++;
     }

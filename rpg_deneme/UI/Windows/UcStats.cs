@@ -102,7 +102,7 @@ public class UcStats : GameWindow
         int def = StatManager.CalculateTotalDefense(_hero, equipment, skills);
         int hp = StatManager.CalculateTotalMaxHP(_hero, equipment, skills);
         int mp = StatManager.CalculateTotalMaxMana(_hero, equipment, skills);
-        float speed = StatManager.CalculateAttackSpeed(_hero, weapon, equipment);
+        float speed = StatManager.CalculateAttackSpeed(_hero, weapon, equipment, skills);
         lblAttack.Text = $"Fiziksel Hasar: {((phyDmg.Item1 == phyDmg.Item2) ? $"{phyDmg.Item1}" : $"{phyDmg.Item1}-{phyDmg.Item2}")}";
         lblMagic.Text = $"Büyü Hasarı: {((magDmg.Item1 == magDmg.Item2) ? $"{magDmg.Item1}" : $"{magDmg.Item1}-{magDmg.Item2}")}";
         lblDefense.Text = $"Toplam Defans: {def}";

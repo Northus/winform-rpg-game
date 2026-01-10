@@ -196,24 +196,40 @@ public static class StatManager
             _ => 500
         };
 
-        // DEX bonusu
-        baseDelay -= hero.DEX * 2;
+        // Calculate Base Duration in ms
+        float baseMs = (float)baseDelay;
+        if (baseMs < 100) baseMs = 100;
 
-        // Equipment bonusu
+        // Calculate Speed Multiplier (100% is normal)
+        // DEX adds ~0.5% per point? Or stick to flat reduction for DEX?
+        // Let's keep DEX flat reduction for now as "Optimization" is tricky if we change too much logic at once.
+        // Actually, user specifically asked for percentage from passive.
+
+        float dexBonusSpeed = hero.DEX * 0.5f; // % speed increase from DEX
+        float equipBonusSpeed = 0f;
+        float passiveBonusSpeed = 0f;
+
+        // Equipment bonus
         if (equipment != null)
         {
-            int atkSpeedBonus = GetTotalAttributeValue(equipment, Enums.ItemAttributeType.AttackSpeed);
-            baseDelay -= atkSpeedBonus * 5;
+            equipBonusSpeed = (float)GetTotalAttributeValue(equipment, Enums.ItemAttributeType.AttackSpeed);
         }
 
-        // Pasif skill bonusları
+        // Passive skill bonus
         if (skills != null)
         {
             var bonus = CalculatePassiveBonuses(skills);
-            baseDelay -= bonus.AttackSpeedBonus * 10;
+            passiveBonusSpeed = (float)bonus.AttackSpeedBonus;
         }
 
-        return Math.Max(150, baseDelay); // Minimum 150ms
+        float totalSpeedBonusPercent = dexBonusSpeed + equipBonusSpeed + passiveBonusSpeed;
+
+        // Formula: NewDelay = BaseDelay / (1 + Bonus/100)
+        // Example: 500ms base, +100% speed => 500 / 2 = 250ms
+
+        float finalDelay = baseMs / (1f + (totalSpeedBonusPercent / 100f));
+
+        return Math.Max(100, (int)finalDelay);
     }
 
     /// <summary>
@@ -387,9 +403,10 @@ public static class StatManager
     }
 
     // Eski uyumluluk için
-    public static float CalculateAttackSpeed(CharacterModel hero, ItemInstance weapon = null, List<ItemInstance> equipment = null)
+    // Eski uyumluluk için
+    public static float CalculateAttackSpeed(CharacterModel hero, ItemInstance weapon = null, List<ItemInstance> equipment = null, List<SkillModel> skills = null)
     {
-        int delay = CalculateAttackDelay(hero, equipment, null);
+        int delay = CalculateAttackDelay(hero, equipment, skills);
         return 1000f / delay; // Saniyede vuruş
     }
 }

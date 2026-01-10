@@ -208,7 +208,8 @@ public partial class UcArena
                 canvas.DrawOval(cx, cy, (ps + 8) / 2, (ps + 8) / 2, GetFill(new SKColor(0, 255, 255, 50)));
                 canvas.DrawOval(cx, cy, ps / 2, ps / 2, GetFill(new SKColor(224, 255, 255)));
                 {
-                    using var crystalPen = GetStroke(new SKColor(240, 248, 255), 1.5f);
+                    // Do not dispose the pen here as it is cached!
+                    var crystalPen = GetStroke(new SKColor(240, 248, 255), 1.5f);
                     for (int i = 0; i < 6; i++)
                     {
                         float angle = (float)(i * Math.PI / 3 + proj.AnimTick * 0.05);

@@ -133,9 +133,9 @@ public class SkillManager
     {
         string name = skill.Name.ToLowerInvariant();
 
-        if (name.Contains("demir") || name.Contains("zırh") || name.Contains("kalkan") || name.Contains("deri"))
+        if (name.Contains("demir") || name.Contains("zırh") || name.Contains("kalkan") || name.Contains("deri") || name.Contains("defense"))
             bonus.DefenseBonus += (int)value;
-        else if (name.Contains("güç") || name.Contains("strength") || name.Contains("saldırı"))
+        else if (name.Contains("güç") || name.Contains("strength") || name.Contains("saldırı") || name.Contains("attack"))
             bonus.AttackBonus += (int)value;
         else if (name.Contains("sihir") || name.Contains("magic") || name.Contains("büyü"))
             bonus.MagicAttackBonus += (int)value;
@@ -143,6 +143,16 @@ public class SkillManager
             bonus.CritChanceBonus += (int)value;
         else if (name.Contains("hız") || name.Contains("speed"))
             bonus.AttackSpeedBonus += (int)value;
+        else if ((name.Contains("can") || name.Contains("hp") || name.Contains("health") || name.Contains("vitality")) && !name.Contains("çalma") && !name.Contains("steal") && !name.Contains("regen"))
+            bonus.MaxHPBonus += (int)value;
+        else if ((name.Contains("mana") || name.Contains("intelligence") || name.Contains("zeka")) && !name.Contains("regen"))
+            bonus.MaxManaBonus += (int)value;
+        else if (name.Contains("can çalma") || name.Contains("life steal") || name.Contains("vampir"))
+            bonus.LifeStealPercent += (int)value;
+        else if (name.Contains("hp regen") || name.Contains("can yenileme") || name.Contains("iyileşme"))
+            bonus.HPRegenBonus += value;
+        else if (name.Contains("mana regen") || name.Contains("mana yenileme"))
+            bonus.ManaRegenBonus += value;
     }
 
     // Eski uyumluluk için - kullanılmayabilir

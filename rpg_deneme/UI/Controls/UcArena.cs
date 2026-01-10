@@ -124,6 +124,12 @@ public partial class UcArena : UserControl
     private int _manaRegenAmount = 0;
     private int _manaRegenTimer = 0;
 
+    // HP Regen
+    private float _hpRegenAmount = 0;
+    private int _hpRegenTimer = 0;
+
+    private int _lifeStealPercent = 0;
+
     // Equipment Cache
     private List<ItemInstance> _cachedEquipment;
     private long _lastEquipFetchTicks;
