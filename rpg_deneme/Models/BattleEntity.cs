@@ -132,4 +132,9 @@ public class BattleEntity
     public bool IsSlowed => SlowTimer > 0;
     public bool IsShocked => ShockTimer > 0;
     public bool IsWeak => WeaknessTimer > 0;
+
+    // AI Behaviors
+    public int SprintCooldown { get; set; }
+    public int SprintTimer { get; set; }
+    public bool IsSprinting => SprintTimer > 0;
 }
