@@ -26,7 +26,7 @@ public class FormSkills : GameWindow
     public FormSkills()
     {
         this.Title = "YETENEKLER";
-        this.Size = new Size(600, 450); // Daha kompakt
+        this.Size = new Size(650, 520); // Increased height to fit content properly
         _skillManager = new SkillManager();
         _character = SessionManager.CurrentCharacter;
 
@@ -36,12 +36,12 @@ public class FormSkills : GameWindow
 
     private void InitializeControls()
     {
-        // Skill Points Info
+        // Skill Points Info - Moved down to avoid potential title bar overlap
         _lblPoints = new Label
         {
             ForeColor = Color.Gold,
             Font = new Font("Segoe UI", 12, FontStyle.Bold),
-            Location = new Point(20, 40),
+            Location = new Point(20, 50),
             AutoSize = true
         };
         this.Controls.Add(_lblPoints);
@@ -50,11 +50,12 @@ public class FormSkills : GameWindow
         _btnLearn = new Button
         {
             Text = "ÖĞREN (+)",
-            Location = new Point(480, 35),
+            Location = new Point(480, 45),
             Size = new Size(120, 30),
             BackColor = Color.ForestGreen,
             ForeColor = Color.White,
-            FlatStyle = FlatStyle.Flat
+            FlatStyle = FlatStyle.Flat,
+            Cursor = Cursors.Hand
         };
         _btnLearn.Click += BtnLearn_Click;
         this.Controls.Add(_btnLearn);
@@ -63,37 +64,47 @@ public class FormSkills : GameWindow
         _btnReset = new Button
         {
             Text = "SIFIRLA (5k)",
-            Location = new Point(370, 35),
+            Location = new Point(370, 45),
             Size = new Size(100, 30),
             BackColor = Color.IndianRed,
             ForeColor = Color.White,
-            FlatStyle = FlatStyle.Flat
+            FlatStyle = FlatStyle.Flat,
+            Cursor = Cursors.Hand
         };
         _btnReset.Click += BtnReset_Click;
         this.Controls.Add(_btnReset);
 
-        // Tree Panel
+        // Tree Panel - Expanded to fill vertical space
         _pnlTree = new Panel
         {
-            Location = new Point(10, 70),
-            Size = new Size(580, 280), // Kompakt
+            Location = new Point(10, 90),
+            Size = new Size(615, 330),
             BackColor = Color.FromArgb(40, 40, 40),
             AutoScroll = true
         };
         _pnlTree.Paint += PnlTree_Paint;
         this.Controls.Add(_pnlTree);
 
-        // Validating Description
+        // Validating Description - Pushed to bottom
+        Panel pnlDesc = new Panel
+        {
+            Location = new Point(10, 430),
+            Size = new Size(615, 60),
+            BackColor = Color.FromArgb(30, 30, 30),
+            BorderStyle = BorderStyle.FixedSingle
+        };
+        this.Controls.Add(pnlDesc);
+
         _lblDescription = new Label
         {
             ForeColor = Color.WhiteSmoke,
-            Location = new Point(10, 360),
-            Size = new Size(580, 60),
+            Dock = DockStyle.Fill,
             Text = "Bir yetenek seçin...",
             Font = new Font("Segoe UI", 9),
-            BorderStyle = BorderStyle.FixedSingle
+            TextAlign = ContentAlignment.MiddleCenter,
+            Padding = new Padding(5)
         };
-        this.Controls.Add(_lblDescription);
+        pnlDesc.Controls.Add(_lblDescription);
     }
 
     private void LoadSkills()
@@ -122,27 +133,29 @@ public class FormSkills : GameWindow
         int maxRow = _skills.Max(s => s.Row);
         int minCol = _skills.Min(s => s.Col);
 
-        int iconSize = 40; // Küçültüldü
-        int gapX = 50; // Daha sıkı
-        int gapY = 50;
-        int startX = 100 - (minCol * (iconSize + gapX)); // Negatif col'ları göster
-        int topPadding = 30;
+        int iconSize = 64; // Increased from 40
+        int gapX = 40; // Adjusted gap
+        int gapY = 40;
+
+        // Center the tree horizontally based on minCol (usually negative)
+        // Assume tree roughly centers around col 0. 
+        // We want Col 0 to be at center of panel.
+        int panelCenter = _pnlTree.Width / 2;
+        int startX = panelCenter - (iconSize / 2); // Center of Col 0
+
+        int topPadding = 20;
 
         foreach (var skill in _skills)
         {
             UcSkillIcon icon = new UcSkillIcon(skill);
 
             // Calculate Position
-            // Row 0 is bottom (Basic Skills), Row Max is top (Advanced)? 
-            // Usually Tree grows Upwards (Root at bottom).
-            // So Row 0 (Root) should be at Bottom. 
-            // MaxRow (Leaf) should be at Top.
-            // Screen Y 0 is Top.
-            // So Row Max should be near Y 0.
-            // Row 0 should be near Y Max.
+            // Row 0 is bottom
+            // MaxRow is top
 
             int rowFromTop = maxRow - skill.Row;
 
+            // X = Center + (Col * (Size + Gap))
             int x = startX + (skill.Col * (iconSize + gapX));
             int y = topPadding + (rowFromTop * (iconSize + gapY));
 

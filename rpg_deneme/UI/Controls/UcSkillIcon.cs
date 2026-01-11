@@ -18,7 +18,7 @@ public class UcSkillIcon : UserControl
     {
         Skill = skill;
         this.DoubleBuffered = true;
-        this.Size = new Size(40, 40); // Küçültüldü
+        this.Size = new Size(64, 64); // Larger size for better visibility
         this.Cursor = Cursors.Hand;
 
         // Tooltip logic
@@ -92,6 +92,11 @@ public class UcSkillIcon : UserControl
         base.OnPaint(e);
         Graphics g = e.Graphics;
         g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+
+        int margin = 3;
+        int size = Width - (margin * 2);
+        Rectangle rect = new Rectangle(margin, margin, size, size);
 
         // Background
         Color bgColor = Color.Gray;
@@ -99,20 +104,20 @@ public class UcSkillIcon : UserControl
         if (Skill.CurrentLevel >= Skill.MaxLevel) bgColor = Color.Gold;
         else if (Skill.CurrentLevel > 0) bgColor = Color.Orange;
         else if (_canLearn) bgColor = Color.LimeGreen;
-        else bgColor = Color.FromArgb(70, 70, 70);
+        else bgColor = Color.FromArgb(60, 60, 60);
 
         if (Skill.Type == Core.Enums.SkillType.Active)
         {
             using (SolidBrush b = new SolidBrush(bgColor))
             {
-                g.FillRectangle(b, 2, 2, 36, 36);
+                g.FillRectangle(b, rect);
             }
         }
         else
         {
             using (SolidBrush b = new SolidBrush(bgColor))
             {
-                g.FillEllipse(b, 2, 2, 36, 36);
+                g.FillEllipse(b, rect);
             }
         }
 
@@ -126,53 +131,92 @@ public class UcSkillIcon : UserControl
                 {
                     using (Image img = Image.FromFile(path))
                     {
-                        g.DrawImage(img, 4, 4, 32, 32);
+                        Rectangle imgRect = new Rectangle(margin + 2, margin + 2, size - 4, size - 4);
+
+                        if (Skill.Type != Core.Enums.SkillType.Active)
+                        {
+                            using (var gp = new System.Drawing.Drawing2D.GraphicsPath())
+                            {
+                                gp.AddEllipse(imgRect);
+                                g.SetClip(gp);
+                                g.DrawImage(img, imgRect);
+                                g.ResetClip();
+                            }
+                        }
+                        else
+                        {
+                            g.DrawImage(img, imgRect);
+                        }
                     }
                 }
                 catch { }
             }
             else
             {
-                DrawLetterPlaceholder(g);
+                DrawLetterPlaceholder(g, rect);
             }
         }
         else
         {
-            DrawLetterPlaceholder(g);
+            DrawLetterPlaceholder(g, rect);
         }
 
         // Border
         Color borderColor = Color.Black;
-        if (_isSelected) borderColor = Color.White;
+        int borderWidth = 2;
+        if (_isSelected)
+        {
+            borderColor = Color.White;
+            borderWidth = 3;
+        }
 
-        using (Pen p = new Pen(borderColor, 2))
+        using (Pen p = new Pen(borderColor, borderWidth))
         {
             if (Skill.Type == Core.Enums.SkillType.Active)
             {
-                g.DrawRectangle(p, 2, 2, 36, 36);
+                g.DrawRectangle(p, rect);
             }
             else
             {
-                g.DrawEllipse(p, 2, 2, 36, 36);
+                g.DrawEllipse(p, rect);
             }
         }
 
-        // Level Indicator
+        // Level Indicator Badge
         string lvl = $"{Skill.CurrentLevel}";
-        using (Font fArgs = new Font("Arial", 7, FontStyle.Bold))
+        using (Font f = new Font("Segoe UI", 10, FontStyle.Bold))
         {
-            g.DrawString(lvl, fArgs, Brushes.Black, 27, 27);
-            g.DrawString(lvl, fArgs, Brushes.White, 26, 26);
+            SizeF txtSize = g.MeasureString(lvl, f);
+
+            // Badge position (Bottom Right)
+            int badgeSize = (int)Math.Max(txtSize.Width, txtSize.Height) + 6;
+            Rectangle badgeRect = new Rectangle(Width - badgeSize - 2, Height - badgeSize - 2, badgeSize, badgeSize);
+
+            // Badge Background
+            using (SolidBrush b = new SolidBrush(Color.FromArgb(200, 0, 0, 0)))
+            {
+                g.FillEllipse(b, badgeRect);
+            }
+            using (Pen p = new Pen(Color.Gold, 1.5f))
+            {
+                g.DrawEllipse(p, badgeRect);
+            }
+
+            // Text
+            float tx = badgeRect.X + (badgeRect.Width - txtSize.Width) / 2;
+            float ty = badgeRect.Y + (badgeRect.Height - txtSize.Height) / 2;
+
+            g.DrawString(lvl, f, Brushes.White, tx, ty);
         }
     }
 
-    private void DrawLetterPlaceholder(Graphics g)
+    private void DrawLetterPlaceholder(Graphics g, Rectangle r)
     {
-        using (Font f = new Font("Arial", 12, FontStyle.Bold))
+        using (Font f = new Font("Arial", 16, FontStyle.Bold))
         {
-            string letter = Skill.Name.Substring(0, Math.Min(2, Skill.Name.Length));
+            string letter = Skill.Name.Substring(0, Math.Min(2, Skill.Name.Length)).ToUpper();
             SizeF size = g.MeasureString(letter, f);
-            g.DrawString(letter, f, Brushes.Black, (Width - size.Width) / 2, (Height - size.Height) / 2);
+            g.DrawString(letter, f, Brushes.Black, r.X + (r.Width - size.Width) / 2, r.Y + (r.Height - size.Height) / 2);
         }
     }
 }

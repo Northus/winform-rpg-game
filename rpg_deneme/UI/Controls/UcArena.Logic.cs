@@ -1540,12 +1540,12 @@ public partial class UcArena
         _skgl?.Invalidate();
     }
 
+
+
     private void UpdateTownLayout()
     {
-        if (!_isTownMode)
-        {
-            return;
-        }
+        if (!_isTownMode) return;
+
         var (w, h) = GetArenaSize();
         int cx = w / 2;
         int cy = h / 2;
@@ -1555,25 +1555,25 @@ public partial class UcArena
             NpcEntity npc = _npcs[i];
             switch (npc.Type)
             {
-                case Enums.NpcType.Merchant:
-                    npc.X = cx - 150;
-                    npc.Y = cy - 100;
+                case Enums.NpcType.ArenaMaster: // Top Center
+                    npc.X = cx - npc.Width / 2;
+                    npc.Y = cy - 180;
                     break;
-                case Enums.NpcType.BlackSmith:
-                    npc.X = cx + 100;
+                case Enums.NpcType.Merchant: // Top Left
+                    npc.X = cx - 150;
                     npc.Y = cy - 120;
                     break;
-                case Enums.NpcType.StorageKeeper:
-                    npc.X = cx - 140;
-                    npc.Y = cy + 80;
-                    break;
-                case Enums.NpcType.Teleporter:
+                case Enums.NpcType.BlackSmith: // Top Right
                     npc.X = cx + 120;
-                    npc.Y = cy + 80;
+                    npc.Y = cy - 120;
                     break;
-                case Enums.NpcType.ArenaMaster:
-                    npc.X = w - 100;
-                    npc.Y = cy - 20;
+                case Enums.NpcType.StorageKeeper: // Bottom Left
+                    npc.X = cx - 150;
+                    npc.Y = cy + 100;
+                    break;
+                case Enums.NpcType.Teleporter: // Bottom Right
+                    npc.X = cx + 120;
+                    npc.Y = cy + 100;
                     break;
             }
         }

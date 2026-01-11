@@ -28,6 +28,7 @@ public partial class UcArena
     // Cache System.Drawing.Image -> SKBitmap conversion (hotbar icons)
     private readonly Dictionary<int, SKBitmap> _hotbarSkBitmapCache = new();
 
+
     private SKBitmap? GetHotbarBitmap(System.Drawing.Image? img)
     {
         if (img is not System.Drawing.Bitmap bmp) return null;
@@ -328,37 +329,309 @@ public partial class UcArena
 
     private void DrawTownBackgroundSkia(SKCanvas canvas, int w, int h)
     {
-        canvas.Clear(new SKColor(143, 188, 143)); // DarkSeaGreen
+        // 1. Grass Background
+        canvas.Clear(new SKColor(34, 139, 34)); // ForestGreen
+        var rnd = new Random(1337);
 
-        // roads
-        canvas.DrawRect(new SKRect(w / 2 - 100, 0, w / 2 + 100, h), GetFill(SKColors.Gray));
-        canvas.DrawRect(new SKRect(0, h / 2 - 80, w, h / 2 + 80), GetFill(SKColors.Gray));
-
-        var p = GetStroke(new SKColor(0, 0, 0, 50), 2);
-        for (int y = 0; y < h; y += 40)
+        // 2. Random Grass Tufts (Decoration)
+        using var grassPaint = new SKPaint { Color = new SKColor(0, 100, 0, 100), Style = SKPaintStyle.Stroke, StrokeWidth = 2, IsAntialias = true };
+        for (int i = 0; i < 400; i++)
         {
-            canvas.DrawLine(w / 2 - 100, y, w / 2 + 100, y, p);
-            canvas.DrawLine(w / 2 - 50, y, w / 2 - 50, y + 40, p);
-            canvas.DrawLine(w / 2 + 50, y, w / 2 + 50, y + 40, p);
+            float gx = rnd.Next(0, w);
+            float gy = rnd.Next(0, h);
+            canvas.DrawLine(gx, gy, gx - 3, gy - 6, grassPaint);
+            canvas.DrawLine(gx, gy, gx + 3, gy - 5, grassPaint);
         }
-        for (int x = 0; x < w; x += 40)
-        {
-            canvas.DrawLine(x, h / 2 - 80, x, h / 2 + 80, p);
-            canvas.DrawLine(x, h / 2, x + 40, h / 2, p);
-        }
-
-        DrawSimpleTreeSkia(canvas, 50, 50);
-        DrawSimpleTreeSkia(canvas, 150, 80);
-        DrawSimpleTreeSkia(canvas, w - 80, 60);
-        DrawSimpleTreeSkia(canvas, w - 180, 100);
 
         float cx = w / 2f;
         float cy = h / 2f;
-        canvas.DrawOval(cx, cy, 60, 60, GetFill(new SKColor(135, 206, 250))); // LightSkyBlue
-        canvas.DrawOval(cx, cy, 60, 60, GetStroke(SKColors.Gray, 2));
-        canvas.DrawOval(cx, cy, 40, 40, GetFill(new SKColor(0, 191, 255))); // DeepSkyBlue
-        canvas.DrawOval(cx, cy, 20, 20, GetStroke(SKColors.White, 2));
+
+        // 3. Central Plaza & Vendor Pads
+
+        // 3. Central Plaza
+        float plazaRadius = 220f;
+
+        using (var floorPaint = new SKPaint { Color = new SKColor(105, 105, 105), Style = SKPaintStyle.Fill, IsAntialias = true }) // DimGray
+        {
+            canvas.DrawCircle(cx, cy, plazaRadius, floorPaint);
+
+            // Texture: Cobblestones (Randomized organic look instead of grid)
+            var stoneColor1 = new SKColor(119, 136, 153); // LightSlateGray
+            var stoneColor2 = new SKColor(112, 128, 144); // SlateGray
+            using var stonePaint = new SKPaint { Style = SKPaintStyle.Fill, IsAntialias = true };
+
+            int rings = 12;
+            for (int r = 1; r <= rings; r++)
+            {
+                float dist = (plazaRadius / rings) * r;
+                float circumference = 2 * (float)Math.PI * dist;
+                int stoneCount = (int)(circumference / 25); // ~25px stones
+
+                for (int s = 0; s < stoneCount; s++)
+                {
+                    float angle = (float)(s * 2 * Math.PI / stoneCount);
+                    // Add some noise to angle and dist
+                    float aOff = (float)(rnd.NextDouble() * 0.1 - 0.05);
+                    float dOff = rnd.Next(-5, 5);
+
+                    float sx = cx + (float)Math.Cos(angle + aOff) * (dist + dOff);
+                    float sy = cy + (float)Math.Sin(angle + aOff) * (dist + dOff);
+
+                    stonePaint.Color = rnd.Next(2) == 0 ? stoneColor1 : stoneColor2;
+                    // Vary stone shape slightly
+                    float sw = rnd.Next(18, 24);
+                    float sh = rnd.Next(14, 20);
+                    canvas.DrawOval(sx, sy, sw / 2, sh / 2, stonePaint);
+                }
+            }
+
+            using (var plazaBorder = new SKPaint { Color = new SKColor(47, 79, 79), Style = SKPaintStyle.Stroke, StrokeWidth = 6, IsAntialias = true })
+            {
+                canvas.DrawCircle(cx, cy, plazaRadius, plazaBorder);
+            }
+        }
+
+        // 4. Props & Decor - REMOVED (User requested removal of unnecessary drawings around NPCs)
+        // Clean plaza is better. NPCs themselves will provide the visuals.
+
+        // 5. Fountain (Center)
+        using (var waterPaint = new SKPaint { Color = new SKColor(65, 105, 225), Style = SKPaintStyle.Fill, IsAntialias = true }) // RoyalBlue
+        {
+            // Stone Basin
+            canvas.DrawCircle(cx, cy, 65, GetFill(SKColors.DarkGray));
+            canvas.DrawCircle(cx, cy, 55, waterPaint);
+        }
+
+        float ripple = (_animCounter % 80);
+        using (var ripplePaint = new SKPaint { Color = new SKColor(255, 255, 255, 100), Style = SKPaintStyle.Stroke, StrokeWidth = 2, IsAntialias = true })
+        {
+            canvas.DrawCircle(cx, cy, ripple * 0.7f, ripplePaint);
+        }
+
+        // Fountain Center Pillar
+        canvas.DrawCircle(cx, cy, 15, GetFill(SKColors.Gray));
+        canvas.DrawCircle(cx, cy, 8, GetFill(SKColors.LightGray));
+
+        // 6. Trees
+        // Adjusted coordinates to not overlap with new plaza or NPCs
+        DrawSimpleTreeSkia(canvas, 60, 60);
+        DrawSimpleTreeSkia(canvas, w - 60, 60);
+        DrawSimpleTreeSkia(canvas, 60, h - 60);
+        DrawSimpleTreeSkia(canvas, w - 60, h - 60);
     }
+
+    private void DrawProceduralCrate(SKCanvas canvas, float x, float y, float size)
+    {
+        var fill = GetFill(new SKColor(139, 69, 19)); // SaddleBrown
+        var stroke = GetStroke(SKColors.Black, 1);
+        var lighter = GetFill(new SKColor(205, 133, 63)); // Peru
+
+        // Top face
+        var path = new SKPath();
+        path.MoveTo(x, y - size / 2);
+        path.LineTo(x + size / 2, y - size / 4);
+        path.LineTo(x, y);
+        path.LineTo(x - size / 2, y - size / 4);
+        path.Close();
+        canvas.DrawPath(path, lighter);
+        canvas.DrawPath(path, stroke);
+
+        // Right face
+        path.Reset();
+        path.MoveTo(x + size / 2, y - size / 4);
+        path.LineTo(x + size / 2, y + size * 0.6f);
+        path.LineTo(x, y + size * 0.85f);
+        path.LineTo(x, y);
+        path.Close();
+        canvas.DrawPath(path, fill);
+        canvas.DrawPath(path, stroke);
+
+        // Left face
+        path.Reset();
+        path.MoveTo(x - size / 2, y - size / 4);
+        path.LineTo(x - size / 2, y + size * 0.6f);
+        path.LineTo(x, y + size * 0.85f);
+        path.LineTo(x, y);
+        path.Close();
+        canvas.DrawPath(path, fill);
+        canvas.DrawPath(path, stroke);
+
+        // Cross
+        canvas.DrawLine(x - size / 2, y - size / 4, x, y + size * 0.85f, stroke);
+        canvas.DrawLine(x - size / 2, y + size * 0.6f, x, y, stroke);
+    }
+
+    private void DrawProceduralBarrel(SKCanvas canvas, float x, float y, float w)
+    {
+        float h = w * 1.2f;
+        var wood = GetFill(new SKColor(160, 82, 45)); // Sienna
+        canvas.DrawOval(x, y, w / 2, h / 2, wood);
+
+        var band = GetStroke(SKColors.Black, 2);
+        canvas.DrawOval(x, y - h / 4, w / 2, h / 8, band);
+        canvas.DrawOval(x, y + h / 4, w / 2, h / 8, band);
+    }
+
+    private void DrawProceduralAnvil(SKCanvas canvas, float x, float y)
+    {
+        // 3D Anvil
+        // Base block
+        var darkGray = GetFill(SKColors.DarkSlateGray);
+        var metallic = GetFill(SKColors.Gray);
+        var border = GetStroke(SKColors.Black, 1);
+
+        // Base (Bottom)
+        canvas.DrawRect(new SKRect(x - 10, y + 10, x + 10, y + 15), darkGray);
+        canvas.DrawRect(new SKRect(x - 10, y + 10, x + 10, y + 15), border);
+
+        // Neck (Middle)
+        canvas.DrawRect(new SKRect(x - 5, y + 5, x + 5, y + 10), darkGray);
+        canvas.DrawRect(new SKRect(x - 5, y + 5, x + 5, y + 10), border);
+
+        // Top Geometry (Face + Horn)
+        // Top surface (lighter)
+        var pathTop = new SKPath();
+        pathTop.MoveTo(x - 15, y);      // Horn tip
+        pathTop.LineTo(x + 15, y);      // Back end
+        pathTop.LineTo(x + 15, y + 4);
+        pathTop.LineTo(x - 5, y + 4);   // Body join
+        pathTop.LineTo(x - 15, y);      // Back to horn tip
+        pathTop.Close();
+
+        canvas.DrawPath(pathTop, GetFill(SKColors.LightGray));
+        canvas.DrawPath(pathTop, border);
+
+        // Side/Front Profile
+        var pathSide = new SKPath();
+        pathSide.MoveTo(x - 15, y);
+        pathSide.LineTo(x + 15, y);
+        pathSide.LineTo(x + 15, y + 5);
+        pathSide.LineTo(x - 5, y + 5);
+        pathSide.Close();
+
+        canvas.DrawPath(pathSide, metallic);
+        canvas.DrawPath(pathSide, border);
+    }
+
+    private void DrawProceduralRug(SKCanvas canvas, float x, float y, float w, float h, SKColor color)
+    {
+        canvas.DrawRect(new SKRect(x - w / 2, y - h / 2, x + w / 2, y + h / 2), GetFill(color));
+        using (var border = new SKPaint { Color = SKColors.Gold, Style = SKPaintStyle.Stroke, StrokeWidth = 2 })
+        {
+            canvas.DrawRect(new SKRect(x - w / 2 + 3, y - h / 2 + 3, x + w / 2 - 3, y + h / 2 - 3), border);
+        }
+    }
+
+    private void DrawTownBackgroundSkiaOld(SKCanvas canvas, int w, int h)
+    {
+        // 1. Grass Background
+        canvas.Clear(new SKColor(34, 139, 34)); // ForestGreen
+
+        // Use a fixed seed for static terrain elements so they don't jitter
+        var rnd = new Random(1337);
+
+        // 2. Random Grass Tufts
+        using var grassPaint = new SKPaint
+        {
+            Color = new SKColor(0, 100, 0, 100), // DarkGreen transparent
+            Style = SKPaintStyle.Stroke,
+            StrokeWidth = 2,
+            IsAntialias = true
+        };
+        for (int i = 0; i < 300; i++)
+        {
+            float gx = rnd.Next(0, w);
+            float gy = rnd.Next(0, h);
+            canvas.DrawLine(gx, gy, gx - 3, gy - 6, grassPaint);
+            canvas.DrawLine(gx, gy, gx + 3, gy - 5, grassPaint);
+        }
+
+        float cx = w / 2f;
+        float cy = h / 2f;
+
+        // 3. Roads (Cobblestone)
+        // Main Horizontal Area
+        DrawCobblestoneRoad(canvas, 0, cy - 60, w, 120, rnd);
+        // Vertical connection
+        DrawCobblestoneRoad(canvas, cx - 60, 0, 120, h, rnd);
+
+        // 4. Buildings (Behind NPCs)
+        // Merchant (Top Left: cx - 150, cy - 100) -> House at cx - 220, cy - 180
+        DrawSimpleHouse(canvas, cx - 240, cy - 200, 160, 120, new SKColor(222, 184, 135), SKColors.DarkRed); // BurlyWood, DarkRed
+
+        // Blacksmith (Top Right: cx + 100, cy - 120) -> Forge at cx + 80, cy - 200
+        DrawSimpleHouse(canvas, cx + 80, cy - 200, 140, 110, SKColors.LightSlateGray, SKColors.DarkSlateGray);
+        // Chimney for blacksmith
+        canvas.DrawRect(new SKRect(cx + 180, cy - 220, cx + 200, cy - 180), GetFill(SKColors.DarkGray));
+        // Smoke
+        float smokeY = (cy - 230) - (_animCounter % 100) * 0.5f;
+        if (smokeY < cy - 250) smokeY = cy - 230;
+        using (var smokePaint = new SKPaint { Color = new SKColor(200, 200, 200, 100), Style = SKPaintStyle.Fill })
+        {
+            canvas.DrawOval(cx + 190, smokeY, 10, 10, smokePaint);
+            canvas.DrawOval(cx + 195, smokeY - 15, 15, 15, smokePaint);
+        }
+
+        // Storage (Bottom Left: cx - 140, cy + 80) -> Warehouse at cx - 200, cy + 80
+        DrawSimpleHouse(canvas, cx - 240, cy + 60, 150, 100, SKColors.SaddleBrown, SKColors.Tan);
+
+        // Teleporter Platform (Bottom Right area)
+        canvas.DrawOval(cx + 145, cy + 130, 80, 40, GetFill(new SKColor(60, 60, 60)));
+        canvas.DrawOval(cx + 145, cy + 130, 60, 30, GetFill(new SKColor(30, 30, 30)));
+        // Runes on platform
+        using (var runePaint = new SKPaint { Color = SKColors.Cyan, Style = SKPaintStyle.Stroke, StrokeWidth = 2, IsAntialias = true })
+        {
+            canvas.DrawOval(cx + 145, cy + 130, 50, 25, runePaint);
+        }
+
+        // 5. Trees (More detailed positions)
+        DrawSimpleTreeSkia(canvas, 40, 40);
+        DrawSimpleTreeSkia(canvas, 100, 90);
+        DrawSimpleTreeSkia(canvas, w - 80, 50);
+        DrawSimpleTreeSkia(canvas, w - 160, 110);
+        DrawSimpleTreeSkia(canvas, cx - 280, cy + 20);
+        DrawSimpleTreeSkia(canvas, cx + 260, cy - 60);
+        DrawSimpleTreeSkia(canvas, 50, h - 80);
+        DrawSimpleTreeSkia(canvas, w - 80, h - 80);
+
+        // 6. Fountain in Center
+        canvas.DrawOval(cx, cy, 70, 50, GetFill(SKColors.Gray)); // Rim
+        canvas.DrawOval(cx, cy, 60, 40, GetFill(new SKColor(30, 144, 255))); // Water
+
+        // Water ripples
+        float ripple = (_animCounter % 60);
+        using (var ripplePaint = new SKPaint { Color = new SKColor(255, 255, 255, 100), Style = SKPaintStyle.Stroke, StrokeWidth = 1 })
+        {
+            canvas.DrawOval(cx, cy, ripple, ripple * 0.6f, ripplePaint);
+        }
+
+        canvas.DrawOval(cx, cy, 20, 15, GetFill(SKColors.LightGray)); // Center piece
+        canvas.DrawOval(cx, cy, 10, 8, GetFill(new SKColor(135, 206, 250))); // Spout
+    }
+
+    private void DrawCobblestoneRoad(SKCanvas canvas, float x, float y, float w, float h, Random rnd)
+    {
+        canvas.DrawRect(new SKRect(x, y, x + w, y + h), GetFill(new SKColor(112, 128, 144))); // SlateGray
+
+        using var stonePaint = new SKPaint { Color = new SKColor(119, 136, 153), Style = SKPaintStyle.Fill };
+
+        int stoneSize = 25;
+        for (float iy = y; iy < y + h; iy += stoneSize)
+        {
+            for (float ix = x; ix < x + w; ix += stoneSize)
+            {
+                if (rnd.NextDouble() > 0.7) continue;
+                float offset = rnd.Next(-2, 3);
+                canvas.DrawRect(new SKRect(ix + 2 + offset, iy + 2 + offset, ix + stoneSize - 2 + offset, iy + stoneSize - 2 + offset), stonePaint);
+            }
+        }
+
+        // Border
+        using var borderPaint = new SKPaint { Color = new SKColor(47, 79, 79), Style = SKPaintStyle.Stroke, StrokeWidth = 2 };
+        canvas.DrawRect(new SKRect(x, y, x + w, y + h), borderPaint);
+    }
+
+
 
     private void DrawArenaBackgroundSkia(SKCanvas canvas, int w, int h)
     {
@@ -392,10 +665,19 @@ public partial class UcArena
 
     private void DrawSimpleTreeSkia(SKCanvas canvas, float x, float y)
     {
+        // Shadow/Base
         canvas.DrawOval(x + 10, y + 50, 30, 10, GetFill(new SKColor(0, 0, 0, 60)));
-        canvas.DrawRect(new SKRect(x, y, x + 20, y + 50), GetFill(new SKColor(160, 82, 45))); // Sienna
-        canvas.DrawOval(x + 10, y - 5, 35, 35, GetFill(new SKColor(34, 139, 34))); // ForestGreen
-        canvas.DrawOval(x + 15, y + 0, 25, 25, GetFill(new SKColor(0, 100, 0))); // DarkGreen
+        // Trunk
+        canvas.DrawRect(new SKRect(x + 5, y + 20, x + 25, y + 50), GetFill(new SKColor(101, 67, 33))); // DarkBrown
+
+        // Foliage - Use a distinct lighter green to contrast with ForestGreen background
+        // Layered ovals for "fluffy" look
+        var foliageColor = new SKColor(60, 179, 113); // MediumSeaGreen
+        var foliageDark = new SKColor(46, 139, 87);   // SeaGreen
+
+        canvas.DrawOval(x, y + 10, 30, 30, GetFill(foliageDark));      // Bottom Left
+        canvas.DrawOval(x + 15, y + 10, 30, 30, GetFill(foliageDark)); // Bottom Right
+        canvas.DrawOval(x + 7, y - 10, 35, 35, GetFill(foliageColor)); // Top Center
     }
 
     private void DrawProceduralNPCSkia(SKCanvas canvas, NpcEntity npc)
@@ -410,47 +692,199 @@ public partial class UcArena
         switch (npc.Type)
         {
             case Enums.NpcType.Merchant:
-                canvas.DrawRect(new SKRect(x - 10, y + h / 2, x + w + 10, y + h), GetFill(new SKColor(160, 82, 45)));
-                canvas.DrawRect(new SKRect(x - 10, y + h / 2, x + w + 10, y + h), GetStroke(SKColors.Black, 1));
-                canvas.DrawRect(new SKRect(x - 5, y, x + 1, y + h / 2), GetFill(new SKColor(222, 184, 135)));
-                canvas.DrawRect(new SKRect(x + w - 1, y, x + w + 5, y + h / 2), GetFill(new SKColor(222, 184, 135)));
                 {
-                    var roof = new[]
+                    // Improved 3D Market Stall
+                    // Base coordinates
+                    float cx = x + w / 2;
+                    float cy = y + h;
+                    float stallW = 70;
+                    float stallH = 30; // Counter height
+
+                    var woodDark = GetFill(new SKColor(139, 69, 19)); // SaddleBrown
+                    var woodLite = GetFill(new SKColor(205, 133, 63)); // Peru
+                    var border = GetStroke(SKColors.Black, 1.5f);
+
+                    // 1. Counter Base (Front)
+                    var counterRect = new SKRect(cx - stallW / 2, cy - stallH, cx + stallW / 2, cy);
+                    canvas.DrawRect(counterRect, woodDark);
+                    canvas.DrawRect(counterRect, border);
+
+                    // 2. Counter Top (Perspective)
+                    var topPath = new SKPath();
+                    topPath.MoveTo(counterRect.Left, counterRect.Top);
+                    topPath.LineTo(counterRect.Right, counterRect.Top);
+                    topPath.LineTo(counterRect.Right + 8, counterRect.Top - 15);
+                    topPath.LineTo(counterRect.Left + 8, counterRect.Top - 15);
+                    topPath.Close();
+                    canvas.DrawPath(topPath, woodLite);
+                    canvas.DrawPath(topPath, border);
+
+                    // 3. Poles
+                    float poleTopY = cy - 65;
+                    var polePaint = GetFill(new SKColor(80, 50, 20));
+                    // Front Left
+                    canvas.DrawRect(new SKRect(counterRect.Left + 2, poleTopY, counterRect.Left + 6, counterRect.Top), polePaint);
+                    // Front Right
+                    canvas.DrawRect(new SKRect(counterRect.Right - 6, poleTopY, counterRect.Right - 2, counterRect.Top), polePaint);
+                    // Back Left
+                    canvas.DrawRect(new SKRect(counterRect.Left + 10, poleTopY - 10, counterRect.Left + 14, counterRect.Top - 15), polePaint);
+                    // Back Right
+                    canvas.DrawRect(new SKRect(counterRect.Right + 2, poleTopY - 10, counterRect.Right + 6, counterRect.Top - 15), polePaint);
+
+                    // 4. Roof (Striped Awning)
+                    // Main shape: Trapezoid projected forward
+                    float roofY = poleTopY;
+                    var roofPath = new SKPath();
+                    roofPath.MoveTo(cx - stallW / 2 - 5, roofY + 5); // Front Left
+                    roofPath.LineTo(cx + stallW / 2 + 5, roofY + 5); // Front Right
+                    roofPath.LineTo(cx + stallW / 2 - 5, roofY - 20); // Top/Back Right
+                    roofPath.LineTo(cx - stallW / 2 + 5, roofY - 20); // Top/Back Left
+                    roofPath.Close();
+
+                    canvas.DrawPath(roofPath, GetFill(SKColors.White));
+                    // Add stripes
+                    using (var stripePaint = new SKPaint { Color = SKColors.Crimson, Style = SKPaintStyle.Fill })
                     {
- new SKPoint(x -15, y),
- new SKPoint(x + w +15, y),
- new SKPoint(x + w +5, y -20),
- new SKPoint(x -5, y -20)
- };
-                    using var path = new SKPath();
-                    path.AddPoly(roof, true);
-                    canvas.DrawPath(path, GetFill(SKColors.Crimson));
+                        // Clip to roof path to draw clean stripes
+                        canvas.Save();
+                        canvas.ClipPath(roofPath);
+                        for (float sx = cx - stallW; sx < cx + stallW; sx += 15)
+                        {
+                            canvas.DrawRect(sx, roofY - 30, 8, 40, stripePaint);
+                        }
+                        canvas.Restore();
+                    }
+                    canvas.DrawPath(roofPath, border);
+
+                    // Goods on table (Apples/Potions)
+                    float tableY = counterRect.Top - 8;
+                    canvas.DrawCircle(cx - 15, tableY, 4, GetFill(SKColors.Red)); // Apple
+                    canvas.DrawCircle(cx - 8, tableY + 2, 4, GetFill(SKColors.Green)); // Apple
+                    canvas.DrawRect(cx + 10, tableY - 4, 6, 8, GetFill(SKColors.Cyan)); // Potion
                 }
                 break;
 
             case Enums.NpcType.Teleporter:
-                canvas.DrawOval(x + w / 2f, y + h - 8, (w + 10) / 2f, 7.5f, GetStroke(SKColors.Cyan, 2));
-                canvas.DrawOval(x + w / 2f, y + h - 7.5f, w / 2f, 4.5f, GetStroke(new SKColor(0, 191, 255), 2));
                 {
-                    float tick = (_animCounter % 100) / 100f;
-                    float py = y + h - 20 - (tick * 40f);
-                    canvas.DrawOval(x + w / 2f, py + 2, 2, 2, GetFill(new SKColor(240, 248, 255)));
+                    // Center the effect on the NPC
+                    float cx = x + w / 2;
+                    float cy = y + h; // Feet position
+
+                    // Floor Rune (Centered on feet)
+                    using (var runeStroke = new SKPaint { Color = SKColors.Cyan, Style = SKPaintStyle.Stroke, StrokeWidth = 2, IsAntialias = true })
+                    {
+                        canvas.DrawOval(cx, cy, 25, 12, runeStroke);
+                        canvas.DrawOval(cx, cy, 18, 9, runeStroke);
+                    }
+
+                    // Floating Portal Effect
+                    float tick = (_animCounter % 100) / 50f; // 0 to 2
+                    float floatY = cy - 25 + (float)Math.Sin(tick * Math.PI) * 5;
+
+                    // Portal Ring
+                    using (var portalPaint = new SKPaint { Color = new SKColor(0, 255, 255, 150), Style = SKPaintStyle.Stroke, StrokeWidth = 3, IsAntialias = true })
+                    {
+                        canvas.DrawOval(cx, floatY, 20, 25, portalPaint);
+                    }
+                    // Inner Glow
+                    using (var glowPaint = new SKPaint { Color = new SKColor(224, 255, 255, 100), Style = SKPaintStyle.Fill, IsAntialias = true })
+                    {
+                        canvas.DrawOval(cx, floatY, 20, 25, glowPaint);
+                    }
+
+                    // Particles
+                    if (_animCounter % 5 == 0)
+                    {
+                        // Simple particle simulation would be complex here, just draw static dust
+                        var rnd = new Random((int)_animCounter);
+                        float px = cx + rnd.Next(-15, 15);
+                        float py = floatY + rnd.Next(-20, 20);
+                        canvas.DrawCircle(px, py, 2, GetFill(SKColors.White));
+                    }
                 }
                 break;
 
             case Enums.NpcType.StorageKeeper:
-                canvas.DrawRect(new SKRect(x, y + 10, x + w, y + h), GetFill(new SKColor(139, 69, 19)));
-                canvas.DrawRect(new SKRect(x, y + 10, x + w, y + h), GetStroke(SKColors.Black, 1));
-                canvas.DrawRect(new SKRect(x + 5, y + 10, x + 10, y + h), GetFill(new SKColor(255, 215, 0)));
-                canvas.DrawRect(new SKRect(x + w - 10, y + 10, x + w - 5, y + h), GetFill(new SKColor(255, 215, 0)));
-                canvas.DrawRect(new SKRect(x + w / 2f - 5, y + 20, x + w / 2f + 5, y + 28), GetFill(new SKColor(255, 215, 0)));
+                {
+                    // Improved 3D Large Chest
+                    float cx = x + w / 2;
+                    float cy = y + h;
+                    float chestW = 60;
+                    float chestH = 35;
+
+                    var woodColor = GetFill(new SKColor(101, 67, 33)); // Dark Brown
+                    var goldColor = GetFill(SKColors.Gold);
+                    var border = GetStroke(SKColors.Black, 2);
+
+                    // Main Box
+                    var boxRect = new SKRect(cx - chestW / 2, cy - chestH, cx + chestW / 2, cy);
+                    canvas.DrawRect(boxRect, woodColor);
+
+                    // Lid (Curved Top approximation via Path)
+                    var lidPath = new SKPath();
+                    lidPath.MoveTo(boxRect.Left, boxRect.Top);
+                    lidPath.LineTo(boxRect.Right, boxRect.Top);
+                    lidPath.QuadTo(cx, boxRect.Top - 20, boxRect.Left, boxRect.Top);
+                    lidPath.Close();
+
+                    canvas.DrawPath(lidPath, GetFill(new SKColor(139, 69, 19))); // Slightly lighter wood
+                    canvas.DrawPath(lidPath, border);
+
+                    canvas.DrawRect(boxRect, border);
+
+                    // Gold Bands
+                    canvas.DrawRect(cx - chestW / 2 + 5, cy - chestH, 8, chestH, goldColor); // Left Band
+                    canvas.DrawRect(cx + chestW / 2 - 13, cy - chestH, 8, chestH, goldColor); // Right Band
+                    canvas.DrawRect(cx - 8, cy - chestH + 10, 16, 12, goldColor); // Lock plate
+                    canvas.DrawCircle(cx, cy - chestH + 16, 3, GetFill(SKColors.Black)); // Keyhole
+                }
                 break;
 
             case Enums.NpcType.BlackSmith:
-                canvas.DrawRect(new SKRect(x + 5, y + h / 2f, x + w - 5, y + h), GetFill(SKColors.DimGray));
-                canvas.DrawRect(new SKRect(x, y + h / 2f - 5, x + w, y + h / 2f + 5), GetFill(SKColors.Gray));
-                canvas.DrawLine(x + w, y + h - 5, x + w + 10, y + h / 2f - 10, GetStroke(new SKColor(139, 69, 19), 4));
-                canvas.DrawRect(new SKRect(x + w + 5, y + h / 2f - 15, x + w + 17, y + h / 2f - 5), GetFill(SKColors.DarkGray));
+                {
+                    // Stone Forge with Fire
+                    float cx = x + w / 2;
+                    float cy = y + h;
+                    float forgeW = 60;
+                    float forgeH = 40;
+
+                    var stoneFill = GetFill(SKColors.DimGray);
+                    var border = GetStroke(SKColors.Black, 2);
+
+                    // Forge Base
+                    var baseRect = new SKRect(cx - forgeW / 2, cy - forgeH, cx + forgeW / 2, cy);
+                    canvas.DrawRect(baseRect, stoneFill);
+                    canvas.DrawRect(baseRect, border);
+
+                    // Fire Pit Opening
+                    var pitRect = new SKRect(cx - 15, cy - 25, cx + 15, cy - 5);
+                    using (var firePath = new SKPath())
+                    {
+                        firePath.AddArc(pitRect, 0, 180); // Bottom arc
+                        firePath.LineTo(pitRect.Left, pitRect.Top);
+                        firePath.Close(); // Arch shape
+                        canvas.DrawPath(firePath, GetFill(SKColors.Black)); // Inside shadow
+                    }
+
+                    // Fire Animation
+                    float flick = (float)Math.Sin(_animCounter * 0.5) * 2;
+                    canvas.DrawOval(cx, cy - 15, 10 + flick, 10 - flick, GetFill(SKColors.OrangeRed));
+                    canvas.DrawOval(cx, cy - 12, 6, 6, GetFill(SKColors.Yellow));
+
+                    // Chimney (Tapered)
+                    var chimneyPath = new SKPath();
+                    chimneyPath.MoveTo(baseRect.Left + 10, baseRect.Top);
+                    chimneyPath.LineTo(baseRect.Right - 10, baseRect.Top);
+                    chimneyPath.LineTo(baseRect.Right - 5, baseRect.Top - 30);
+                    chimneyPath.LineTo(baseRect.Left + 5, baseRect.Top - 30);
+                    chimneyPath.Close();
+
+                    canvas.DrawPath(chimneyPath, GetFill(SKColors.Gray));
+                    canvas.DrawPath(chimneyPath, border);
+
+                    // Anvil nearby (Small prop included in NPC draw now)
+                    DrawProceduralAnvil(canvas, cx + 35, cy - 5);
+                }
                 break;
 
             case Enums.NpcType.ArenaMaster:
@@ -1054,4 +1488,5 @@ public partial class UcArena
         float cy = rect.Top + rect.Height / 2f + 7;
         canvas.DrawText(text ?? string.Empty, cx, cy, _resultsButtonTextPaint);
     }
+    private void DrawSimpleHouse(SKCanvas canvas, float x, float y, float w, float h, SKColor wall, SKColor roof) { }
 }
