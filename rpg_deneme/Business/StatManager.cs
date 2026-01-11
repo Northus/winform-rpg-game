@@ -190,10 +190,10 @@ public static class StatManager
     {
         int baseDelay = hero.Class switch
         {
-            1 => 500,  // Warrior - orta
-            2 => 350,  // Rogue - hızlı
-            3 => 600,  // Mage - yavaş
-            _ => 500
+            1 => 700,  // Warrior - was 500
+            2 => 480,  // Rogue - was 350
+            3 => 850,  // Mage - was 600
+            _ => 700
         };
 
         // Calculate Base Duration in ms
@@ -229,7 +229,7 @@ public static class StatManager
 
         float finalDelay = baseMs / (1f + (totalSpeedBonusPercent / 100f));
 
-        return Math.Max(100, (int)finalDelay);
+        return Math.Max(200, (int)finalDelay);
     }
 
     /// <summary>

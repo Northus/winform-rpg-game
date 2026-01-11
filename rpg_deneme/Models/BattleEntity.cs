@@ -137,4 +137,7 @@ public class BattleEntity
     public int SprintCooldown { get; set; }
     public int SprintTimer { get; set; }
     public bool IsSprinting => SprintTimer > 0;
+
+    // Hit Animation
+    public int HitTimer { get; set; } // >0 = flash white
 }

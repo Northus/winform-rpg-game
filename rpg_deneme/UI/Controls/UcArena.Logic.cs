@@ -19,6 +19,40 @@ namespace rpg_deneme.UI.Controls;
 public partial class UcArena
 {
     private bool _statsDirty = false;
+    private int _screenShakeTimer = 0;
+
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int vKey);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    private void UpdateInputState()
+    {
+        var form = this.FindForm();
+        if (form == null) return;
+
+        IntPtr fg = GetForegroundWindow();
+        bool isGameFocused = (fg == form.Handle);
+
+        if (!isGameFocused && rpg_deneme.UI.Windows.FrmItemTooltip.Instance.Visible && fg == rpg_deneme.UI.Windows.FrmItemTooltip.Instance.Handle)
+        {
+            isGameFocused = true;
+        }
+
+        if (isGameFocused)
+        {
+            _w = (GetAsyncKeyState(0x57) & 0x8000) != 0; // W
+            _a = (GetAsyncKeyState(0x41) & 0x8000) != 0; // A
+            _s = (GetAsyncKeyState(0x53) & 0x8000) != 0; // S
+            _d = (GetAsyncKeyState(0x44) & 0x8000) != 0; // D
+        }
+        else
+        {
+            _w = false; _a = false; _s = false; _d = false;
+            if (_player != null) _player.IsMoving = false;
+        }
+    }
 
     public void StartBattle(CharacterModel hero, BattleEntity enemyTemplate)
     {
@@ -31,11 +65,9 @@ public partial class UcArena
 
         BattleEntity singleEnemy = new BattleEntity
         {
-            X = w - 100,
-            Y = h / 2 - 20,
             Width = enemyTemplate.Width,
             Height = enemyTemplate.Height,
-            Speed = enemyTemplate.Speed,
+            Speed = enemyTemplate.Speed * 0.65f,
             MaxHP = enemyTemplate.MaxHP,
             CurrentHP = enemyTemplate.MaxHP,
             MinDamage = enemyTemplate.MinDamage,
@@ -44,18 +76,40 @@ public partial class UcArena
             IsRanged = enemyTemplate.IsRanged,
             AttackRange = enemyTemplate.AttackRange
         };
+
+        Random rnd = new Random();
+        int edge = rnd.Next(4); // 0: Top, 1: Bottom, 2: Left, 3: Right
+        int margin = 60;
+
+        switch (edge)
+        {
+            case 0: // Top
+                singleEnemy.X = rnd.Next(margin, w - margin);
+                singleEnemy.Y = margin;
+                break;
+            case 1: // Bottom
+                singleEnemy.X = rnd.Next(margin, w - margin);
+                singleEnemy.Y = h - margin - singleEnemy.Height;
+                break;
+            case 2: // Left
+                singleEnemy.X = margin;
+                singleEnemy.Y = rnd.Next(margin, h - margin);
+                break;
+            case 3: // Right
+                singleEnemy.X = w - margin - singleEnemy.Width;
+                singleEnemy.Y = rnd.Next(margin, h - margin);
+                break;
+        }
+
         if (_player != null)
         {
-            Rectangle playerRect = new Rectangle((int)_player.X, (int)_player.Y, _player.Width, _player.Height);
-            Rectangle enemyRect = new Rectangle((int)singleEnemy.X, (int)singleEnemy.Y, singleEnemy.Width, singleEnemy.Height);
-            int tries = 0;
-            Random rnd = new Random();
-            while (enemyRect.IntersectsWith(playerRect) && tries < 20)
+            // Ensure not spawning on top of player (though edge vs center is usually safe)
+            float dist = (float)Math.Sqrt(Math.Pow(singleEnemy.X - _player.X, 2) + Math.Pow(singleEnemy.Y - _player.Y, 2));
+            if (dist < 200)
             {
-                singleEnemy.X = w - 100 - rnd.Next(0, 200);
-                singleEnemy.Y = 100 + rnd.Next(0, Math.Max(100, h - 200));
-                enemyRect = new Rectangle((int)singleEnemy.X, (int)singleEnemy.Y, singleEnemy.Width, singleEnemy.Height);
-                tries++;
+                // Fallback to far corner
+                singleEnemy.X = w - 100;
+                singleEnemy.Y = 100;
             }
         }
         _enemies.Add(singleEnemy);
@@ -77,17 +131,13 @@ public partial class UcArena
         Random rnd = new Random();
         foreach (EnemyModel tmpl in enemyTemplates)
         {
-            int ex = w - 100 - rnd.Next(0, 200);
-            int ey = 100 + rnd.Next(0, Math.Max(100, h - 200));
             bool isRangedUnit = tmpl.IsRanged || tmpl.Type == Enums.EnemyType.Ranged;
             int attackRange = ((tmpl.AttackRange > 0) ? tmpl.AttackRange : (isRangedUnit ? 250 : 50));
             BattleEntity newEnemy = new BattleEntity
             {
-                X = ex,
-                Y = ey,
                 Width = tmpl.Width,
                 Height = tmpl.Height,
-                Speed = tmpl.Speed,
+                Speed = tmpl.Speed * 0.65f,
                 MaxHP = tmpl.MaxHP,
                 CurrentHP = tmpl.MaxHP,
                 MinDamage = tmpl.MinDamage,
@@ -96,19 +146,38 @@ public partial class UcArena
                 IsRanged = isRangedUnit,
                 AttackRange = attackRange
             };
+
+            int edge = rnd.Next(4);
+            int margin = 50;
+
+            switch (edge)
+            {
+                case 0: // Top
+                    newEnemy.X = rnd.Next(margin, w - margin);
+                    newEnemy.Y = margin;
+                    break;
+                case 1: // Bottom
+                    newEnemy.X = rnd.Next(margin, w - margin);
+                    newEnemy.Y = h - margin - newEnemy.Height;
+                    break;
+                case 2: // Left
+                    newEnemy.X = margin;
+                    newEnemy.Y = rnd.Next(margin, h - margin);
+                    break;
+                case 3: // Right
+                    newEnemy.X = w - margin - newEnemy.Width;
+                    newEnemy.Y = rnd.Next(margin, h - margin);
+                    break;
+            }
+
             if (_player != null)
             {
-                Rectangle playerRect = new Rectangle((int)_player.X, (int)_player.Y, _player.Width, _player.Height);
-                Rectangle eRect = new Rectangle((int)newEnemy.X, (int)newEnemy.Y, newEnemy.Width, newEnemy.Height);
-                int tries = 0;
-                while ((eRect.IntersectsWith(playerRect) || _enemies.Any((BattleEntity en) => en.Bounds.IntersectsWith(eRect))) && tries < 30)
+                // Safety check to push away if somehow too close
+                float dist = (float)Math.Sqrt(Math.Pow(newEnemy.X - _player.X, 2) + Math.Pow(newEnemy.Y - _player.Y, 2));
+                if (dist < 150)
                 {
-                    ex = w - 100 - rnd.Next(0, 300);
-                    ey = 80 + rnd.Next(0, Math.Max(100, h - 160));
-                    newEnemy.X = ex;
-                    newEnemy.Y = ey;
-                    eRect = new Rectangle((int)newEnemy.X, (int)newEnemy.Y, newEnemy.Width, newEnemy.Height);
-                    tries++;
+                    newEnemy.X += 200; // Just push it somewhere
+                    if (newEnemy.X > w - 50) newEnemy.X = 50;
                 }
             }
             _enemies.Add(newEnemy);
@@ -153,7 +222,7 @@ public partial class UcArena
             Y = h / 2 - 16,
             Width = 32,
             Height = 32,
-            Speed = 5f,
+            Speed = 3.5f,
             MaxHP = maxHp,
             CurrentHP = currentHP,
             MinDamage = 0,
@@ -201,7 +270,7 @@ public partial class UcArena
             Y = startY,
             Width = 32,
             Height = 32,
-            Speed = 5f,
+            Speed = 3.5f,
             MaxHP = maxHp,
             CurrentHP = currentHP,
             MinDamage = 0,
@@ -294,7 +363,7 @@ public partial class UcArena
         _player.Defense = calculatedDefense;
 
         int moveSpeedBonus = StatManager.CalculateMovementSpeedBonus(_learnedSkills);
-        _player.Speed = 5f + moveSpeedBonus * 0.1f;
+        _player.Speed = 3.5f + moveSpeedBonus * 0.1f;
 
         _manaRegenAmount = StatManager.GetTotalAttributeValue(equipment, Enums.ItemAttributeType.ManaRegen);
 
@@ -416,6 +485,7 @@ public partial class UcArena
     /// </summary>
     private void StepSimulation()
     {
+        UpdateInputState();
         Fps_OnGameTick();
 
         if (_player == null) return;
@@ -521,6 +591,7 @@ public partial class UcArena
             UpdatePlayer();
             UpdateProjectiles();
             UpdateEffects();
+            if (_screenShakeTimer > 0) _screenShakeTimer--;
             if (!_isTownMode)
             {
                 UpdateEnemiesOptimized();
@@ -538,6 +609,7 @@ public partial class UcArena
             currentSpeed *= 0.6f;
             _player.SlowTimer--;
         }
+        if (_player.HitTimer > 0) _player.HitTimer--;
 
         float proposedX = _player.X;
         float proposedY = _player.Y;
@@ -566,7 +638,7 @@ public partial class UcArena
         if (_w || _a || _s || _d)
         {
             _player.IsMoving = true;
-            _player.AnimTimer += 0.2f;
+            _player.AnimTimer += 0.04f * currentSpeed;
         }
         else
         {
@@ -774,6 +846,7 @@ public partial class UcArena
 
         int reduced = Math.Max(1, dmg - _player.Defense);
         _player.CurrentHP -= reduced;
+        _player.HitTimer = 8; // Player flashes when hit
         if (_player.CurrentHP < 0)
         {
             _player.CurrentHP = 0;
@@ -840,6 +913,8 @@ public partial class UcArena
         }
 
         target.CurrentHP -= dmg;
+        target.HitTimer = isCrit ? 10 : 5; // Enemy flashes white on hit
+        if (isCrit) _screenShakeTimer = 6; // Simple screen shake on crits
 
         // Life Steal
         if (_lifeStealPercent > 0 && _player.CurrentHP < _player.MaxHP)
@@ -1538,6 +1613,7 @@ public partial class UcArena
             if (enemy.SlowTimer > 0) enemy.SlowTimer--;
             if (enemy.ShockTimer > 0) enemy.ShockTimer--;
             if (enemy.WeaknessTimer > 0) enemy.WeaknessTimer--;
+            if (enemy.HitTimer > 0) enemy.HitTimer--;
 
             // AI Cooldowns (Sprint)
             if (enemy.SprintCooldown > 0) enemy.SprintCooldown--;
@@ -1717,7 +1793,7 @@ public partial class UcArena
 
             bool isMoving = MathF.Abs(enemy.VX) > 0.1f || MathF.Abs(enemy.VY) > 0.1f;
             enemy.IsMoving = isMoving;
-            enemy.AnimTimer += isMoving ? (enemy.IsSprinting ? 0.3f : 0.15f) : 0.05f;
+            enemy.AnimTimer += isMoving ? (currentSpeed * 0.03f) : 0.05f;
             if (dx != 0) enemy.FacingRight = dx > 0; // Face player
 
             if (enemy.VisualAttackTimer > 0) enemy.VisualAttackTimer--;
@@ -1732,7 +1808,7 @@ public partial class UcArena
                         _projectiles.Add(new SkillProjectile(enemyCenterX, enemyCenterY, playerCenterX, playerCenterY,
                             _rnd.Next(enemy.MinDamage, enemy.MaxDamage + 1), enemy: true));
                         enemy.VisualAttackTimer = 10f;
-                        enemy.DecisionCooldown = 60;
+                        enemy.DecisionCooldown = 90;
                     }
                 }
             }
@@ -1741,7 +1817,7 @@ public partial class UcArena
                 if (distToPlayer <= 65f && enemy.AttackCooldown <= 0)
                 {
                     enemy.VisualAttackTimer = 10f;
-                    enemy.AttackCooldown = 50;
+                    enemy.AttackCooldown = 75;
                     ApplyDamageToPlayer(_rnd.Next(enemy.MinDamage, enemy.MaxDamage + 1));
 
                     // Slow Player Chance

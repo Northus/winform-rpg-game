@@ -125,6 +125,14 @@ public partial class UcArena
         // screen shake
         canvas.Save();
 
+        if (_screenShakeTimer > 0)
+        {
+            var rnd = new Random();
+            float shakeX = (float)((rnd.NextDouble() - 0.5) * _screenShakeTimer * 2.5);
+            float shakeY = (float)((rnd.NextDouble() - 0.5) * _screenShakeTimer * 2.5);
+            canvas.Translate(shakeX, shakeY);
+        }
+
         DrawBackgroundSkia(canvas, w, h);
 
         if (_isTownMode)
@@ -841,6 +849,11 @@ public partial class UcArena
     /// </summary>
     private void DrawProceduralCharacterSkia(SKCanvas canvas, BattleEntity ent, SKColor color, int classType, int weaponLevel = 0, Enums.ItemGrade grade = Enums.ItemGrade.Common)
     {
+        if (ent.HitTimer > 0)
+        {
+            color = SKColors.White;
+        }
+
         float bounce = 0f;
         float armSwing = 0f;
         float legSwing = 0f;
@@ -890,7 +903,7 @@ public partial class UcArena
             canvas.DrawOval(x + w / 2f, y + (h - 10) / 2f, (w - 4) / 2f, (h - 15) / 2f, GetStroke(SKColors.Black, 1));
         }
 
-        var skin = classType == 0 ? new SKColor(188, 143, 143) : new SKColor(255, 228, 196);
+        var skin = (ent.HitTimer > 0) ? SKColors.White : (classType == 0 ? new SKColor(188, 143, 143) : new SKColor(255, 228, 196));
         canvas.DrawOval(cx, y + 1, 9, 9, GetFill(skin));
 
         if (classType == 1)

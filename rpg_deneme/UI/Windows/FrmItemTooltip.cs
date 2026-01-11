@@ -110,6 +110,16 @@ public class FrmItemTooltip : Form
 
     protected override bool ShowWithoutActivation => true;
 
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            CreateParams baseParams = base.CreateParams;
+            baseParams.ExStyle |= 0x08000000; // WS_EX_NOACTIVATE
+            return baseParams;
+        }
+    }
+
     public void ShowTooltip(ItemInstance item, Point location)
     {
         if (item == null)

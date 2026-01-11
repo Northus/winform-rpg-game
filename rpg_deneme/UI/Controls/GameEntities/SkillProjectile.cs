@@ -57,10 +57,10 @@ public class SkillProjectile
             _ => enemy ? 8 : 10
         };
 
-        float spd = enemy ? 5f : 9f;
-        if (visualType == 1) spd = 11f;
-        if (visualType == 2) spd = 13f;
-        if (visualType == 3) spd = 10f;
+        float spd = enemy ? 6.5f : 6.0f;
+        if (visualType == 1) spd = 7.5f;
+        if (visualType == 2) spd = 9.0f;
+        if (visualType == 3) spd = 7.0f;
 
         float dx = tx - x;
         float dy = ty - y;

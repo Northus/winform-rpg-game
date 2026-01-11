@@ -271,6 +271,16 @@ public partial class UcArena
         }
     }
 
+    protected override void OnLeave(EventArgs e)
+    {
+        base.OnLeave(e);
+        _w = false;
+        _a = false;
+        _s = false;
+        _d = false;
+        if (_player != null) _player.IsMoving = false;
+    }
+
     private void UpdateTooltips(Point pt)
     {
         for (int i = 0; i < _hotbar.Count; i++)

@@ -20,7 +20,7 @@ public class LevelManager
     /// </summary>
     public static int GetRequiredXp(int level)
     {
-        return level * 100;
+        return 100 * level + 25 * level * level;
     }
 
     /// <summary>
