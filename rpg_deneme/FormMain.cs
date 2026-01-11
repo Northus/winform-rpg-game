@@ -614,12 +614,20 @@ public class FormMain : Form
         UpdateBars(null);
     }
 
+    /// <summary>
+    /// Form tarafından kullanılan kaynakları temizler.
+    /// </summary>
+    /// <param name="disposing">Yönetilen kaynaklar silinmeli mi?</param>
     protected override void Dispose(bool disposing)
     {
         if (disposing && components != null) { components.Dispose(); }
         base.Dispose(disposing);
     }
 
+    /// <summary>
+    /// Oyun içi menüyü görüntüler.
+    /// Arka planı karartmak için geçici bir form (dimmer) kullanır.
+    /// </summary>
     private void ShowMenu()
     {
         // 1. Create Dimmer Form
@@ -658,6 +666,10 @@ public class FormMain : Form
         dimmer.Dispose();
     }
 
+    /// <summary>
+    /// Mevcut oyunu kapatıp karakter seçim ekranına geri döner.
+    /// Kullanıcıdan onay ister.
+    /// </summary>
     private void ReturnToCharSelect()
     {
         if (MessageBox.Show("Karakter seçim ekranına dönmek istediğine emin misin?", "Onay", MessageBoxButtons.YesNo) == DialogResult.Yes)
@@ -690,6 +702,9 @@ public class FormMain : Form
         }
     }
 
+    /// <summary>
+    /// Form üzerindeki bileşenleri (butonlar, paneller vb.) başlatır ve yerleştirir.
+    /// </summary>
     private void InitializeComponent()
     {
         panel1 = new Panel();

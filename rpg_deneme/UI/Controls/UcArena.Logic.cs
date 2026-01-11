@@ -62,6 +62,10 @@ public partial class UcArena
         StartGameLoop();
     }
 
+    /// <summary>
+    /// Hayatta kalma modu (Survival/Wave) savaşını başlatır.
+    /// Düşmanlar oyuncudan uzakta rastgele konumlarda doğar.
+    /// </summary>
     public void StartSurvivalBattle(CharacterModel hero, List<EnemyModel> enemyTemplates)
     {
         PrepareBattleCommon(hero);
@@ -112,6 +116,10 @@ public partial class UcArena
         StartGameLoop();
     }
 
+    /// <summary>
+    /// Şehir modunu (güvenli bölge) başlatır.
+    /// Düşmanlar temizlenir, NPC'ler yüklenir.
+    /// </summary>
     public void StartTown(CharacterModel hero)
     {
         _isBattleEnding = false;
@@ -226,6 +234,10 @@ public partial class UcArena
         RecalculatePlayerStats();
     }
 
+    /// <summary>
+    /// Oyuncunun mevcut ekipmanlarına, yeteneklerine ve seviyesine göre
+    /// hasar, defans, can, mana vb. tüm istatistiklerini yeniden hesaplar.
+    /// </summary>
     public void RecalculatePlayerStats()
     {
         if (_hero == null || _player == null) return;
@@ -335,6 +347,10 @@ public partial class UcArena
         return !PeekMessage(out result, IntPtr.Zero, 0, 0, 0);
     }
 
+    /// <summary>
+    /// Oyun döngüsünü (Game Loop) başlatır.
+    /// Application.Idle olayını kullanarak mümkün olan en yüksek FPS'i hedefler.
+    /// </summary>
     private void StartGameLoop()
     {
         if (_loopRunning) return;
@@ -392,11 +408,12 @@ public partial class UcArena
         }
     }
 
-    private void GameLoop_Tick(object? sender, EventArgs e)
-    {
-    }
 
-    // One fixed-step simulation tick (60Hz)
+
+    /// <summary>
+    /// Oyunun fizik ve mantık simülasyonunun bir adımı (Tick).
+    /// Sabit 60Hz hızında çalışacak şekilde ayarlanmıştır.
+    /// </summary>
     private void StepSimulation()
     {
         Fps_OnGameTick();
@@ -511,280 +528,7 @@ public partial class UcArena
         }
     }
 
-    private void UpdateEnemies()
-    {
-        if (_enemyAttackCooldown > 0)
-        {
-            _enemyAttackCooldown--;
-        }
 
-        int aliveCount = 0;
-        int enemyCount = _enemies.Count;
-
-        // Infer player velocity for prediction (Intercept logic)
-        float pVx = 0f, pVy = 0f;
-        // Use base speed for prediction to be conservative
-        float pSpeed = 4f;
-        if (_w) pVy -= pSpeed;
-        if (_s) pVy += pSpeed;
-        if (_a) pVx -= pSpeed;
-        if (_d) pVx += pSpeed;
-
-        float playerCenterX = _player.Center.X;
-        float playerCenterY = _player.Center.Y;
-
-        // Dynamic separation radius based on count
-        float separationRadius = enemyCount > 20 ? 35f : 45f;
-        float separationRadiusSq = separationRadius * separationRadius;
-
-        for (int i = 0; i < enemyCount; i++)
-        {
-            BattleEntity enemy = _enemies[i];
-
-            // --- Status Effects Logic (DoT) ---
-            if (enemy.BurnTimer > 0)
-            {
-                enemy.BurnTimer--;
-                if (enemy.BurnTimer % 60 == 0)
-                {
-                    enemy.CurrentHP -= 5;
-                    _effects.Add(new VisualEffect { X = enemy.X, Y = enemy.Y - 10, IsText = true, Text = "5", Color = Color.OrangeRed, Size = 9, LifeTime = 30 });
-                }
-            }
-            if (enemy.PoisonTimer > 0)
-            {
-                enemy.PoisonTimer--;
-                if (enemy.PoisonTimer % 60 == 0)
-                {
-                    enemy.CurrentHP -= 3;
-                    _effects.Add(new VisualEffect { X = enemy.X, Y = enemy.Y - 10, IsText = true, Text = "3", Color = Color.LimeGreen, Size = 9, LifeTime = 30 });
-                }
-            }
-            if (enemy.StunTimer > 0) enemy.StunTimer--;
-            if (enemy.FreezeTimer > 0) enemy.FreezeTimer--;
-            if (enemy.SlowTimer > 0) enemy.SlowTimer--;
-            if (enemy.ShockTimer > 0) enemy.ShockTimer--;
-            if (enemy.WeaknessTimer > 0) enemy.WeaknessTimer--;
-
-            // AI Cooldowns
-            if (enemy.SprintCooldown > 0) enemy.SprintCooldown--;
-            if (enemy.SprintTimer > 0) enemy.SprintTimer--;
-
-            if (enemy.CurrentHP <= 0) continue;
-            aliveCount++;
-
-            if (enemy.IsStunned || enemy.IsFrozen)
-            {
-                enemy.IsMoving = false;
-                continue;
-            }
-
-            // --- Movement Logic ---
-            float enemyCenterX = enemy.Center.X;
-            float enemyCenterY = enemy.Center.Y;
-            float dx = playerCenterX - enemyCenterX;
-            float dy = playerCenterY - enemyCenterY;
-            float distToPlayer = MathF.Sqrt(dx * dx + dy * dy);
-            if (distToPlayer < 0.001f) distToPlayer = 0.001f;
-
-            // Predict Player Position (Intercept)
-            float lookAhead = Math.Min(distToPlayer / 10f, 20f); // Limit prediction
-            float targetX = playerCenterX + pVx * lookAhead;
-            float targetY = playerCenterY + pVy * lookAhead;
-
-            // Direction to PREDICTED target
-            float tDx = targetX - enemyCenterX;
-            float tDy = targetY - enemyCenterY;
-            float distToTarget = MathF.Sqrt(tDx * tDx + tDy * tDy);
-            float dirX = (distToTarget > 0.001f) ? tDx / distToTarget : 0;
-            float dirY = (distToTarget > 0.001f) ? tDy / distToTarget : 0;
-
-            // Flanking/Surrounding for Melee
-            if (!enemy.IsRanged && distToPlayer < 200f)
-            {
-                // Add tangential component to circle around
-                // Alternating direction based on ID to surround from both sides
-                float approachFactor = 0.6f;
-                float flankFactor = 0.4f;
-
-                float flankDir = (i % 2 == 0) ? 1f : -1f;
-                // Tangent is (-y, x)
-                float tangentX = -dirY * flankDir;
-                float tangentY = dirX * flankDir;
-
-                dirX = dirX * approachFactor + tangentX * flankFactor;
-                dirY = dirY * approachFactor + tangentY * flankFactor;
-
-                // Re-normalize
-                float dMag = MathF.Sqrt(dirX * dirX + dirY * dirY);
-                if (dMag > 0.01f) { dirX /= dMag; dirY /= dMag; }
-            }
-
-            // Separation (Cheap version)
-            float sepX = 0f, sepY = 0f;
-            // Only check nearby neighbors in list (optimization for small/med counts)
-            int checkRange = 10;
-            int startK = Math.Max(0, i - checkRange);
-            int endK = Math.Min(enemyCount, i + checkRange);
-            int neighbors = 0;
-
-            for (int k = startK; k < endK; k++)
-            {
-                if (i == k) continue;
-                var other = _enemies[k];
-                if (other.CurrentHP <= 0) continue;
-
-                float odx = enemy.X - other.X;
-                float ody = enemy.Y - other.Y;
-
-                // Simple Manhattan distance check first for speed
-                if (MathF.Abs(odx) > separationRadius || MathF.Abs(ody) > separationRadius) continue;
-
-                float distSq = odx * odx + ody * ody;
-                if (distSq < separationRadiusSq && distSq > 0.001f)
-                {
-                    float dist = MathF.Sqrt(distSq);
-                    float push = (separationRadius - dist) / separationRadius;
-                    sepX += (odx / dist) * push;
-                    sepY += (ody / dist) * push;
-                    neighbors++;
-                }
-            }
-            if (neighbors > 0)
-            {
-                sepX /= neighbors;
-                sepY /= neighbors;
-            }
-
-            float moveX = dirX + sepX * 1.5f; // Strong separation
-            float moveY = dirY + sepY * 1.5f;
-
-            // Normalize final move vector
-            float mMag = MathF.Sqrt(moveX * moveX + moveY * moveY);
-            if (mMag > 0.01f) { moveX /= mMag; moveY /= mMag; }
-
-            // Ranged Logic Override (Kiting/Strafing)
-            if (enemy.IsRanged)
-            {
-                float desiredRange = (enemy.AttackRange > 0) ? enemy.AttackRange : 250f;
-                if (distToPlayer < desiredRange * 0.5f) // Too close, back away
-                {
-                    moveX = -dirX * 0.8f + sepX;
-                    moveY = -dirY * 0.8f + sepY;
-                }
-                else if (distToPlayer > desiredRange) // Too far, approach
-                {
-                    // standard move
-                }
-                else // In range, strafe
-                {
-                    if (enemy.DecisionCooldown <= 0)
-                    {
-                        enemy.StrafeSign = (_rnd.Next(2) == 0) ? 1 : -1;
-                        enemy.DecisionCooldown = _rnd.Next(30, 60);
-                    }
-                    // Tangent strafe
-                    moveX = -dirY * enemy.StrafeSign * 0.5f + sepX * 0.5f;
-                    moveY = dirX * enemy.StrafeSign * 0.5f + sepY * 0.5f;
-                }
-                // Re-normalize ranged move
-                float rMag = MathF.Sqrt(moveX * moveX + moveY * moveY);
-                if (rMag > 0.01f) { moveX /= rMag; moveY /= rMag; }
-            }
-
-            // --- Sprint/Dash Trigger ---
-            if (!enemy.IsRanged && enemy.SprintCooldown <= 0 && enemy.SprintTimer <= 0)
-            {
-                // If reasonably close but not in attack range yet
-                if (distToPlayer > 80f && distToPlayer < 350f)
-                {
-                    // 2% chance per frame (approx once per second)
-                    if (_rnd.NextDouble() < 0.02)
-                    {
-                        enemy.SprintTimer = 40; // ~0.6s
-                        enemy.SprintCooldown = 240; // 4s wait
-                        _effects.Add(new VisualEffect
-                        {
-                            X = enemy.X + enemy.Width / 2,
-                            Y = enemy.Y,
-                            IsText = true,
-                            Text = "!",
-                            Color = Color.Red,
-                            Size = 16,
-                            LifeTime = 20
-                        });
-                    }
-                }
-            }
-
-            // Apply Speed
-            float finalSpeed = enemy.Speed;
-            if (enemy.IsSlowed) finalSpeed *= 0.5f;
-            if (enemy.IsSprinting) finalSpeed *= 1.8f; // Dash speed!
-
-            enemy.VX = Lerp(enemy.VX, moveX * finalSpeed, 0.2f);
-            enemy.VY = Lerp(enemy.VY, moveY * finalSpeed, 0.2f);
-
-            enemy.X += enemy.VX;
-            enemy.Y += enemy.VY;
-
-            bool isMoving = MathF.Abs(enemy.VX) > 0.1f || MathF.Abs(enemy.VY) > 0.1f;
-            enemy.IsMoving = isMoving;
-            if (isMoving) enemy.FacingRight = enemy.VX > 0;
-            enemy.AnimTimer += isMoving ? (enemy.IsSprinting ? 0.3f : 0.15f) : 0.05f;
-
-            // --- Attacks ---
-            if (enemy.VisualAttackTimer > 0) enemy.VisualAttackTimer--;
-
-            if (enemy.IsRanged && distToPlayer <= (enemy.AttackRange > 0 ? enemy.AttackRange : 250f) + 50f)
-            {
-                if (_rnd.NextDouble() < 0.015)
-                {
-                    _projectiles.Add(new SkillProjectile(enemyCenterX, enemyCenterY, playerCenterX, playerCenterY,
-                        _rnd.Next(enemy.MinDamage, enemy.MaxDamage + 1), enemy: true));
-                    enemy.VisualAttackTimer = 10f;
-                }
-            }
-            else if (!enemy.IsRanged && distToPlayer <= 55f && enemy.AttackCooldown <= 0)
-            {
-                enemy.VisualAttackTimer = 10f;
-                enemy.AttackCooldown = 45;
-
-                // Deal Damage
-                ApplyDamageToPlayer(_rnd.Next(enemy.MinDamage, enemy.MaxDamage + 1));
-
-                // Chance to Slow Player (Web/Hamstring effect) - to prevent easy escape
-                if (_player.SlowTimer <= 0 && _rnd.NextDouble() < 0.35)
-                {
-                    _player.SlowTimer = 45; // 0.75s slow
-                    // Use a visual cue
-                    _effects.Add(new VisualEffect
-                    {
-                        X = _player.Center.X,
-                        Y = _player.Center.Y - 20,
-                        IsText = true,
-                        Text = "Slowed!",
-                        Color = Color.LightBlue,
-                        Size = 12,
-                        LifeTime = 40
-                    });
-                }
-            }
-            if (enemy.AttackCooldown > 0) enemy.AttackCooldown--;
-
-            ClampEntityPosition(enemy);
-        }
-
-        if (_enemies.Count > 0)
-        {
-            _enemies.RemoveAll(x => x.CurrentHP <= 0);
-        }
-
-        if (aliveCount == 0 && !_isBattleEnding)
-        {
-            StartBattleEndSequence(victory: true);
-        }
-    }
 
     private void UpdatePlayer()
     {

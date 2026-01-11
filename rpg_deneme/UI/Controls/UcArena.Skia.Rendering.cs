@@ -29,6 +29,12 @@ public partial class UcArena
     private readonly Dictionary<int, SKBitmap> _hotbarSkBitmapCache = new();
 
 
+    /// <summary>
+    /// Verilen System.Drawing.Image nesnesini SKBitmap formatına dönüştürür ve önbelleğe alır.
+    /// Bu işlem performans için önemlidir, her karede tekrar dönüştürme yapılmaz.
+    /// </summary>
+    /// <param name="img">Dönüştürülecek orijinal resim.</param>
+    /// <returns>Önbellekten veya yeni oluşturulan SKBitmap nesnesi.</returns>
     private SKBitmap? GetHotbarBitmap(System.Drawing.Image? img)
     {
         if (img is not System.Drawing.Bitmap bmp) return null;
@@ -61,18 +67,7 @@ public partial class UcArena
     private readonly SKPath _characterPath = new();
     private readonly SKPath _helmetPath = new();
 
-    private SKBitmap? _enemySkCachedBitmap;
-    private SKBitmap? _playerSkCachedBitmap;
-    private SKBitmap? _npcSkCachedBitmap;
-    private SKBitmap? _projectileSkCachedBitmap;
-    private SKBitmap? _effectSkCachedBitmap;
-
-    // Entity bitmaps (Skia)
-    private SKBitmap _skPlayerBitmap = null!;
-    private SKBitmap _skEnemyBitmap = null!;
-    private SKBitmap _skNpcBitmap = null!;
-    private SKBitmap _skProjectileBitmap = null!;
-    private SKBitmap _skEffectBitmap = null!;
+    // Entity bitmaps (Skia) - Kaldırıldı (Prosedürel çizim kullanılıyor)
 
     private SKPaint GetFill(uint argb)
     {
@@ -112,6 +107,10 @@ public partial class UcArena
 
     private static SKColor ToSK(Color c) => new SKColor(c.R, c.G, c.B, c.A);
 
+    /// <summary>
+    /// SkiaSharp kontrolünün boyama olayı (Paint Event).
+    /// Tüm oyun görüntüleme döngüsü burada başlar.
+    /// </summary>
     private void Arena_SKPaintSurface(object? sender, SKPaintGLSurfaceEventArgs e)
     {
         var canvas = e.Surface.Canvas;
@@ -162,6 +161,12 @@ public partial class UcArena
         canvas.Restore();
     }
 
+    /// <summary>
+    /// Bir yetenek veya mermi (projectile) çizimini gerçekleştirir.
+    /// Türüne göre ateş, buz, yıldırım gibi farklı görsel efektler uygular.
+    /// </summary>
+    /// <param name="canvas">Çizim yapılacak yüzey.</param>
+    /// <param name="proj">Çizilecek mermi nesnesi.</param>
     private void DrawProjectileSkia(SKCanvas canvas, SkillProjectile proj)
     {
         int trailCount = proj.TrailCount;
@@ -265,6 +270,11 @@ public partial class UcArena
         }
     }
 
+    /// <summary>
+    /// Düşman karakterini ekrana çizer.
+    /// </summary>
+    /// <param name="canvas">Çizim yüzeyi.</param>
+    /// <param name="en">Düşman nesnesi.</param>
     private void DrawEnemySkia(SKCanvas canvas, BattleEntity en)
     {
         if (en.CurrentHP <= 0) return;
@@ -292,6 +302,10 @@ public partial class UcArena
         canvas.DrawRect(rect, GetStroke(SKColors.Black, 1));
     }
 
+    /// <summary>
+    /// Oyun arka planını çizer. Performans için sonucu bir SKPicture içine önbelleğe alır (cache).
+    /// Böylece her karede tüm çimler ve taşlar tekrar hesaplanmaz.
+    /// </summary>
     private void DrawBackgroundSkia(SKCanvas canvas, int w, int h)
     {
         bool needsRedraw = _skBackgroundPicture == null ||
@@ -327,6 +341,10 @@ public partial class UcArena
         }
     }
 
+    /// <summary>
+    /// Şehir modundaki arka planı prosedürel olarak (kod ile) çizer.
+    /// Meydan, bitkiler ve zemin detaylarını içerir.
+    /// </summary>
     private void DrawTownBackgroundSkia(SKCanvas canvas, int w, int h)
     {
         // 1. Grass Background
@@ -522,117 +540,15 @@ public partial class UcArena
         }
     }
 
-    private void DrawTownBackgroundSkiaOld(SKCanvas canvas, int w, int h)
-    {
-        // 1. Grass Background
-        canvas.Clear(new SKColor(34, 139, 34)); // ForestGreen
-
-        // Use a fixed seed for static terrain elements so they don't jitter
-        var rnd = new Random(1337);
-
-        // 2. Random Grass Tufts
-        using var grassPaint = new SKPaint
-        {
-            Color = new SKColor(0, 100, 0, 100), // DarkGreen transparent
-            Style = SKPaintStyle.Stroke,
-            StrokeWidth = 2,
-            IsAntialias = true
-        };
-        for (int i = 0; i < 300; i++)
-        {
-            float gx = rnd.Next(0, w);
-            float gy = rnd.Next(0, h);
-            canvas.DrawLine(gx, gy, gx - 3, gy - 6, grassPaint);
-            canvas.DrawLine(gx, gy, gx + 3, gy - 5, grassPaint);
-        }
-
-        float cx = w / 2f;
-        float cy = h / 2f;
-
-        // 3. Roads (Cobblestone)
-        // Main Horizontal Area
-        DrawCobblestoneRoad(canvas, 0, cy - 60, w, 120, rnd);
-        // Vertical connection
-        DrawCobblestoneRoad(canvas, cx - 60, 0, 120, h, rnd);
-
-        // 4. Buildings (Behind NPCs)
-        // Merchant (Top Left: cx - 150, cy - 100) -> House at cx - 220, cy - 180
-        DrawSimpleHouse(canvas, cx - 240, cy - 200, 160, 120, new SKColor(222, 184, 135), SKColors.DarkRed); // BurlyWood, DarkRed
-
-        // Blacksmith (Top Right: cx + 100, cy - 120) -> Forge at cx + 80, cy - 200
-        DrawSimpleHouse(canvas, cx + 80, cy - 200, 140, 110, SKColors.LightSlateGray, SKColors.DarkSlateGray);
-        // Chimney for blacksmith
-        canvas.DrawRect(new SKRect(cx + 180, cy - 220, cx + 200, cy - 180), GetFill(SKColors.DarkGray));
-        // Smoke
-        float smokeY = (cy - 230) - (_animCounter % 100) * 0.5f;
-        if (smokeY < cy - 250) smokeY = cy - 230;
-        using (var smokePaint = new SKPaint { Color = new SKColor(200, 200, 200, 100), Style = SKPaintStyle.Fill })
-        {
-            canvas.DrawOval(cx + 190, smokeY, 10, 10, smokePaint);
-            canvas.DrawOval(cx + 195, smokeY - 15, 15, 15, smokePaint);
-        }
-
-        // Storage (Bottom Left: cx - 140, cy + 80) -> Warehouse at cx - 200, cy + 80
-        DrawSimpleHouse(canvas, cx - 240, cy + 60, 150, 100, SKColors.SaddleBrown, SKColors.Tan);
-
-        // Teleporter Platform (Bottom Right area)
-        canvas.DrawOval(cx + 145, cy + 130, 80, 40, GetFill(new SKColor(60, 60, 60)));
-        canvas.DrawOval(cx + 145, cy + 130, 60, 30, GetFill(new SKColor(30, 30, 30)));
-        // Runes on platform
-        using (var runePaint = new SKPaint { Color = SKColors.Cyan, Style = SKPaintStyle.Stroke, StrokeWidth = 2, IsAntialias = true })
-        {
-            canvas.DrawOval(cx + 145, cy + 130, 50, 25, runePaint);
-        }
-
-        // 5. Trees (More detailed positions)
-        DrawSimpleTreeSkia(canvas, 40, 40);
-        DrawSimpleTreeSkia(canvas, 100, 90);
-        DrawSimpleTreeSkia(canvas, w - 80, 50);
-        DrawSimpleTreeSkia(canvas, w - 160, 110);
-        DrawSimpleTreeSkia(canvas, cx - 280, cy + 20);
-        DrawSimpleTreeSkia(canvas, cx + 260, cy - 60);
-        DrawSimpleTreeSkia(canvas, 50, h - 80);
-        DrawSimpleTreeSkia(canvas, w - 80, h - 80);
-
-        // 6. Fountain in Center
-        canvas.DrawOval(cx, cy, 70, 50, GetFill(SKColors.Gray)); // Rim
-        canvas.DrawOval(cx, cy, 60, 40, GetFill(new SKColor(30, 144, 255))); // Water
-
-        // Water ripples
-        float ripple = (_animCounter % 60);
-        using (var ripplePaint = new SKPaint { Color = new SKColor(255, 255, 255, 100), Style = SKPaintStyle.Stroke, StrokeWidth = 1 })
-        {
-            canvas.DrawOval(cx, cy, ripple, ripple * 0.6f, ripplePaint);
-        }
-
-        canvas.DrawOval(cx, cy, 20, 15, GetFill(SKColors.LightGray)); // Center piece
-        canvas.DrawOval(cx, cy, 10, 8, GetFill(new SKColor(135, 206, 250))); // Spout
-    }
-
-    private void DrawCobblestoneRoad(SKCanvas canvas, float x, float y, float w, float h, Random rnd)
-    {
-        canvas.DrawRect(new SKRect(x, y, x + w, y + h), GetFill(new SKColor(112, 128, 144))); // SlateGray
-
-        using var stonePaint = new SKPaint { Color = new SKColor(119, 136, 153), Style = SKPaintStyle.Fill };
-
-        int stoneSize = 25;
-        for (float iy = y; iy < y + h; iy += stoneSize)
-        {
-            for (float ix = x; ix < x + w; ix += stoneSize)
-            {
-                if (rnd.NextDouble() > 0.7) continue;
-                float offset = rnd.Next(-2, 3);
-                canvas.DrawRect(new SKRect(ix + 2 + offset, iy + 2 + offset, ix + stoneSize - 2 + offset, iy + stoneSize - 2 + offset), stonePaint);
-            }
-        }
-
-        // Border
-        using var borderPaint = new SKPaint { Color = new SKColor(47, 79, 79), Style = SKPaintStyle.Stroke, StrokeWidth = 2 };
-        canvas.DrawRect(new SKRect(x, y, x + w, y + h), borderPaint);
-    }
 
 
 
+
+
+
+    /// <summary>
+    /// Arena (Savaş) modu için arka planı çizer.
+    /// </summary>
     private void DrawArenaBackgroundSkia(SKCanvas canvas, int w, int h)
     {
         canvas.Clear(new SKColor(46, 34, 25));
@@ -680,6 +596,9 @@ public partial class UcArena
         canvas.DrawOval(x + 7, y - 10, 35, 35, GetFill(foliageColor)); // Top Center
     }
 
+    /// <summary>
+    /// Bir NPC (konuşulabilir karakter) ve onun çevresel nesnelerini çizer.
+    /// </summary>
     private void DrawProceduralNPCSkia(SKCanvas canvas, NpcEntity npc)
     {
         float x = npc.X;
@@ -916,6 +835,10 @@ public partial class UcArena
         canvas.DrawText(npc.Name ?? string.Empty, tx, ty, _npcTextPaint);
     }
 
+    /// <summary>
+    /// Karakteri (oyuncu veya düşman) prosedürel olarak çizer.
+    /// Sınıfına göre (Savaşçı, Okçu vb.) farklı detaylar (kask, silah) ekler.
+    /// </summary>
     private void DrawProceduralCharacterSkia(SKCanvas canvas, BattleEntity ent, SKColor color, int classType, int weaponLevel = 0, Enums.ItemGrade grade = Enums.ItemGrade.Common)
     {
         float bounce = 0f;
@@ -1080,6 +1003,9 @@ public partial class UcArena
         }
     }
 
+    /// <summary>
+    /// Aktif görsel efektleri (büyü efektleri, hasar yazıları) ekrana çizer.
+    /// </summary>
     private void DrawEffectsSkia(SKCanvas canvas)
     {
         int effectCount = _effects.Count;
@@ -1297,6 +1223,10 @@ public partial class UcArena
         }
     }
 
+    /// <summary>
+    /// Alt paneldeki yetenek ve eşya barını (Hotbar) çizer.
+    /// Bekleme süreleri (cooldown) ve sayaçları da burada işlenir.
+    /// </summary>
     private void DrawHotbarSkia(SKCanvas canvas)
     {
         for (int i = 0; i < _hotbar.Count; i++)
@@ -1368,6 +1298,9 @@ public partial class UcArena
 
     private SKColor GetTitleColor(bool won) => won ? new SKColor(255, 215, 0) : SKColors.Red;
 
+    /// <summary>
+    /// Oyun bittiğinde gösterilen sonuç ekranını (Zafer/Yenilgi) çizer.
+    /// </summary>
     private void DrawResultsOverlaySkia(SKCanvas canvas, int w, int h)
     {
         canvas.DrawRect(new SKRect(0, 0, w, h), GetFill(new SKColor(0, 0, 0, 220)));
@@ -1444,6 +1377,9 @@ public partial class UcArena
         }
     }
 
+    /// <summary>
+    /// Kaynakların temizlendiği metot. Skia nesnelerini (bitmapler, fırçalar) bellekten siler.
+    /// </summary>
     private void DisposeSkiaCaches()
     {
         _skBackgroundPicture?.Dispose();
@@ -1488,5 +1424,5 @@ public partial class UcArena
         float cy = rect.Top + rect.Height / 2f + 7;
         canvas.DrawText(text ?? string.Empty, cx, cy, _resultsButtonTextPaint);
     }
-    private void DrawSimpleHouse(SKCanvas canvas, float x, float y, float w, float h, SKColor wall, SKColor roof) { }
+
 }
