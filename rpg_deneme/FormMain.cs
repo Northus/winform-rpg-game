@@ -160,7 +160,7 @@ public class FormMain : Form
         {
             _townArena = new UcArena();
             _townArena.Dock = DockStyle.Fill;
-            _townArena.OnStatsUpdated += delegate { RefreshStats(); };
+            _townArena.OnStatsUpdated += OnTownStatsUpdated;
             _townArena.OnNpcInteraction += delegate (object? s, NpcEntity npc)
             {
                 if (npc.Name == "DEPOCU")
@@ -532,9 +532,15 @@ public class FormMain : Form
         {
             _townArena = new UcArena();
             _townArena.Dock = DockStyle.Fill;
-            _townArena.OnStatsUpdated += delegate { RefreshStats(); };
+            _townArena.OnStatsUpdated += OnTownStatsUpdated;
         }
         SwitchScreen(_townArena);
+
+        // Switch to lightweight stats update for battle
+        _townArena.OnStatsUpdated -= OnTownStatsUpdated;
+        _townArena.OnStatsUpdated -= OnSurvivalStatsUpdated; // safety
+        _townArena.OnStatsUpdated += OnSurvivalStatsUpdated;
+
         _townArena.StartSurvivalBattle(_hero, enemies);
         _townArena.OnBattleEnded -= SurvivalBattleEnded;
         _townArena.OnBattleEnded += SurvivalBattleEnded;
@@ -563,6 +569,10 @@ public class FormMain : Form
                     () => { ShowTown(); },
                     "ŞEHRE DÖN"
                 );
+
+                // Restore heavy stats update for town/results
+                _townArena.OnStatsUpdated -= OnSurvivalStatsUpdated;
+                _townArena.OnStatsUpdated += OnTownStatsUpdated;
             });
         }
         else
@@ -586,8 +596,22 @@ public class FormMain : Form
                    () => { ShowTown(); },
                    "ŞEHRE DÖN"
                );
+
+                // Restore heavy stats update for town/results
+                _townArena.OnStatsUpdated -= OnSurvivalStatsUpdated;
+                _townArena.OnStatsUpdated += OnTownStatsUpdated;
             });
         }
+    }
+
+    private void OnTownStatsUpdated(object sender, EventArgs e)
+    {
+        RefreshStats();
+    }
+
+    private void OnSurvivalStatsUpdated(object sender, EventArgs e)
+    {
+        UpdateBars(null);
     }
 
     protected override void Dispose(bool disposing)
