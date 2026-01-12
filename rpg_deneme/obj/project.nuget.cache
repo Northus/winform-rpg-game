@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "KNBKDdvyc1Y=",
+  "dgSpecHash": "orII5St+Q3E=",
   "success": true,
   "projectFilePath": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\rpg_deneme.csproj",
   "expectedPackageFiles": [
@@ -22,30 +22,5 @@
     "C:\\Users\\fatih\\.nuget\\packages\\system.drawing.common\\4.7.3\\system.drawing.common.4.7.3.nupkg.sha512",
     "C:\\Users\\fatih\\.nuget\\packages\\system.memory\\4.5.3\\system.memory.4.5.3.nupkg.sha512"
   ],
-  "logs": [
-    {
-      "code": "NU1701",
-      "level": "Warning",
-      "message": "Package 'OpenTK 3.1.0' was restored using '.NETFramework,Version=v4.6.1, .NETFramework,Version=v4.6.2, .NETFramework,Version=v4.7, .NETFramework,Version=v4.7.1, .NETFramework,Version=v4.7.2, .NETFramework,Version=v4.8, .NETFramework,Version=v4.8.1' instead of the project target framework 'net8.0-windows7.0'. This package may not be fully compatible with your project.",
-      "projectPath": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\rpg_deneme.csproj",
-      "warningLevel": 1,
-      "filePath": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\rpg_deneme.csproj",
-      "libraryId": "OpenTK",
-      "targetGraphs": [
-        "net8.0-windows7.0"
-      ]
-    },
-    {
-      "code": "NU1701",
-      "level": "Warning",
-      "message": "Package 'OpenTK.GLControl 3.1.0' was restored using '.NETFramework,Version=v4.6.1, .NETFramework,Version=v4.6.2, .NETFramework,Version=v4.7, .NETFramework,Version=v4.7.1, .NETFramework,Version=v4.7.2, .NETFramework,Version=v4.8, .NETFramework,Version=v4.8.1' instead of the project target framework 'net8.0-windows7.0'. This package may not be fully compatible with your project.",
-      "projectPath": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\rpg_deneme.csproj",
-      "warningLevel": 1,
-      "filePath": "C:\\Users\\fatih\\source\\repos\\rpg_deneme\\rpg_deneme\\rpg_deneme.csproj",
-      "libraryId": "OpenTK.GLControl",
-      "targetGraphs": [
-        "net8.0-windows7.0"
-      ]
-    }
-  ]
+  "logs": []
 }

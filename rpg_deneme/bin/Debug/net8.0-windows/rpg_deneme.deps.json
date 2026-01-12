@@ -6,9 +6,11 @@
   "compilationOptions": {},
   "targets": {
     ".NETCoreApp,Version=v8.0": {
-      "rpg_deneme/1.0.0": {
+      "rpg_deneme/0.1.0": {
         "dependencies": {
           "Microsoft.Data.Sqlite": "10.0.1",
+          "OpenTK": "3.1.0",
+          "OpenTK.GLControl": "3.1.0",
           "SkiaSharp": "2.88.9",
           "SkiaSharp.Views.WindowsForms": "2.88.9"
         },
@@ -288,7 +290,7 @@
     }
   },
   "libraries": {
-    "rpg_deneme/1.0.0": {
+    "rpg_deneme/0.1.0": {
       "type": "project",
       "serviceable": false,
       "sha512": ""

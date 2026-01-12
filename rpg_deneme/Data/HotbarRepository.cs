@@ -23,11 +23,10 @@ public class HotbarRepository
             // Updated Schema has Type and ReferenceID.
 
             string sql = @"
-                INSERT OR REPLACE INTO HotbarSettings (CharacterID, SlotIndex, Type, ReferenceID, ItemInstanceID)
-                VALUES (@CharID, @Slot, @Type, @RefID, @RefID); 
+                INSERT OR REPLACE INTO HotbarSettings (CharacterID, SlotIndex, Type, ReferenceID)
+                VALUES (@CharID, @Slot, @Type, @RefID); 
             ";
-            // Note: I set ItemInstanceID = RefID just in case some other code queries it. 
-            // But main logic uses Type/RefID now.
+            // Updated to match current schema (Type + ReferenceID)
 
             using (var cmd = new SqliteCommand(sql, conn))
             {
@@ -55,7 +54,7 @@ public class HotbarRepository
         {
             conn.Open();
             // Select Type, ReferenceID. If ReferenceID is null, maybe fallback to ItemInstanceID?
-            string sql = "SELECT SlotIndex, Type, ReferenceID, ItemInstanceID FROM HotbarSettings WHERE CharacterID = @CharID";
+            string sql = "SELECT SlotIndex, Type, ReferenceID FROM HotbarSettings WHERE CharacterID = @CharID";
             using (var cmd = new SqliteCommand(sql, conn))
             {
                 cmd.Parameters.AddWithValue("@CharID", characterId);
@@ -69,7 +68,6 @@ public class HotbarRepository
 
                         long refId = 0;
                         if (!reader.IsDBNull(2)) refId = reader.GetInt64(2);
-                        else if (!reader.IsDBNull(3)) refId = reader.GetInt64(3); // Fallback
 
                         if (refId > 0)
                         {

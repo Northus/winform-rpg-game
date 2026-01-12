@@ -17,16 +17,28 @@ internal static class Program
     [STAThread]
     private static void Main()
     {
-        // Uygulama konfigürasyonunu başlat
-        ApplicationConfiguration.Initialize();
+        try
+        {
+            // Uygulama konfigürasyonunu başlat
+            ApplicationConfiguration.Initialize();
 
-        // Veritabanı şemasının varlığını kontrol et ve gerekirse oluştur
-        SQLiteSchemaInitializer.EnsureCreated();
+            // Veritabanı şemasının varlığını kontrol et ve gerekirse oluştur
+            try
+            {
+                SQLiteSchemaInitializer.EnsureCreated();
+            }
+            catch (Exception dbEx)
+            {
+                MessageBox.Show($"Veritabanı başlatma hatası: {dbEx.Message}\n\n{dbEx.StackTrace}", "Kritik Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
 
-        // Skills tablosunu zorla doldur (boşsa)
-        //SQLiteSchemaInitializer.ForceSeedSkills();
-
-        // Karakter seçim formunu başlat
-        Application.Run(new FormCharSelect());
+            // Karakter seçim formunu başlat
+            Application.Run(new FormCharSelect());
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Beklenmeyen bir hata oluştu: {ex.Message}\n\n{ex.StackTrace}", "Kritik Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
     }
 }
