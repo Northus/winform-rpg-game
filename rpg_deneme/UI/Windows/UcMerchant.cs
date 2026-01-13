@@ -31,7 +31,7 @@ public class UcMerchant : GameWindow
     public UcMerchant(int shopId)
     {
         InitializeComponent();
-        base.Title = "MARKET";
+        base.Title = "SHOP";
         base.Size = new Size(300, 450);
         _currentShopId = shopId;
 
@@ -87,7 +87,7 @@ public class UcMerchant : GameWindow
             slot.Enabled = false;
             Label lblPrice = new Label
             {
-                Text = ((item.BuyPrice > 0) ? $"{item.BuyPrice} G" : "Bedava"),
+                Text = ((item.BuyPrice > 0) ? $"{item.BuyPrice} G" : "Free"),
                 Dock = DockStyle.Bottom,
                 Height = 25,
                 TextAlign = ContentAlignment.MiddleCenter,
@@ -97,7 +97,7 @@ public class UcMerchant : GameWindow
             };
             Label lblOverlay = new Label
             {
-                Text = "AL",
+                Text = "BUY",
                 AutoSize = false,
                 Size = new Size(50, 50),
                 Location = new Point(6, 4),

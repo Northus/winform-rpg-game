@@ -121,11 +121,11 @@ public class InventoryManager
     /// </summary>
     public (bool Success, string Message) SplitItem(ItemInstance item, int amountToSplit)
     {
-        if (amountToSplit >= item.Count) { return (Success: false, Message: "Hatalı miktar."); }
-        if (amountToSplit <= 0) { return (Success: false, Message: "En az 1 adet bölmelisin."); }
+        if (amountToSplit >= item.Count) { return (Success: false, Message: "Invalid quantity."); }
+        if (amountToSplit <= 0) { return (Success: false, Message: "Must split at least 1."); }
 
         int emptySlot = _repo.FindFirstEmptyInventorySlot(item.OwnerID);
-        if (emptySlot == -1) { return (Success: false, Message: "Bölmek için boş yer yok!"); }
+        if (emptySlot == -1) { return (Success: false, Message: "No space to split!"); }
 
         ItemInstance newItem = new ItemInstance
         {
@@ -144,9 +144,9 @@ public class InventoryManager
         if (_repo.AddItemDirectly(newItem))
         {
             _repo.ConsumeItem(item.InstanceID, amountToSplit);
-            return (Success: true, Message: "Eşya bölündü.");
+            return (Success: true, Message: "Item split.");
         }
-        return (Success: false, Message: "Veritabanı hatası.");
+        return (Success: false, Message: "Database error.");
     }
 
     /// <summary>

@@ -104,7 +104,7 @@ public class UcExploration : UserControl
         };
         Label lblDiff = new Label
         {
-            Text = "Zorluk:",
+            Text = "Difficulty:",
             ForeColor = Color.White,
             Location = new Point(20, 130),
             AutoSize = true,
@@ -138,7 +138,7 @@ public class UcExploration : UserControl
         base.Controls.Add(pnlInfo);
         btnExplore = new Button
         {
-            Text = "KEŞFET",
+            Text = "EXPLORE",
             Size = new Size(200, 60),
             Location = new Point(20, 210),
             BackColor = Color.DarkOrange,
@@ -188,14 +188,14 @@ public class UcExploration : UserControl
         cmbDifficulty.Items.Clear();
         cmbDifficulty.Items.Add(new ComboBoxItem
         {
-            Text = "Kolay (1 Düşman)",
+            Text = "Easy (1 Enemy)",
             Value = Enums.ZoneDifficulty.Easy
         });
         if (_zoneManager.CanEnterDifficulty(hero.CharacterID, _currentZone.ZoneID, Enums.ZoneDifficulty.Normal))
         {
             cmbDifficulty.Items.Add(new ComboBoxItem
             {
-                Text = "Normal (2 Düşman - 2x Ödül)",
+                Text = "Normal (2 Enemies - 2x Rewards)",
                 Value = Enums.ZoneDifficulty.Normal
             });
         }
@@ -203,7 +203,7 @@ public class UcExploration : UserControl
         {
             cmbDifficulty.Items.Add(new ComboBoxItem
             {
-                Text = "Zor (5 Düşman - 5x Ödül)",
+                Text = "Hard (5 Enemies - 5x Rewards)",
                 Value = Enums.ZoneDifficulty.Hard
             });
         }
@@ -241,13 +241,13 @@ public class UcExploration : UserControl
         RecomputeBossState(hero);
         if (currentProg >= 100 && _bossReadyToSpawn)
         {
-            btnExplore.Text = "BOSS SAVAŞI";
+            btnExplore.Text = "BOSS BATTLE";
             btnExplore.BackColor = Color.DarkRed;
             _isBossFight = true;
         }
         else
         {
-            btnExplore.Text = "KEŞFET";
+            btnExplore.Text = "EXPLORE";
             btnExplore.BackColor = Color.DarkOrange;
             _isBossFight = false;
         }
@@ -260,7 +260,7 @@ public class UcExploration : UserControl
             Random rnd = new Random();
             if (rnd.Next(1, 100) > 90)
             {
-                MessageBox.Show("Etraf sessiz görünüyor...");
+                MessageBox.Show("It seems quiet around here...");
                 return;
             }
         }
@@ -302,7 +302,7 @@ public class UcExploration : UserControl
         EnemyModel enemyTemplate = _zoneManager.GetEnemyForZone(_currentZone.ZoneID, _isBossFight);
         if (enemyTemplate == null)
         {
-            MessageBox.Show("Bu bölgede düşman verisi yok!");
+            MessageBox.Show("No enemy data for this zone!");
             ucArena.Visible = false;
             pnlInfo.Visible = true;
             return;
@@ -314,7 +314,7 @@ public class UcExploration : UserControl
         }
         if (_isBossFight)
         {
-            MessageBox.Show($"BOSS GELİYOR: {enemyList[0].Name}\nZorluk: {_selectedDifficulty}", "DİKKAT", MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
+            MessageBox.Show($"BOSS INCOMING: {enemyList[0].Name}\nDifficulty: {_selectedDifficulty}", "WARNING", MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
         }
         ucArena.StartSurvivalBattle(hero, enemyList);
     }
@@ -357,10 +357,10 @@ public class UcExploration : UserControl
         }
         _levelManager.AddExperience(hero, totalXP);
 
-        string resultMsg = $"Zafer! +{totalXP} XP";
+        string resultMsg = $"Victory! +{totalXP} XP";
         if (!string.IsNullOrEmpty(allLoot))
         {
-            resultMsg = resultMsg + "\n\nGANİMETLER:\n" + allLoot;
+            resultMsg = resultMsg + "\n\nLOOT:\n" + allLoot;
         }
 
         if (_isBossFight)
@@ -371,9 +371,9 @@ public class UcExploration : UserControl
             {
                 hero.MaxUnlockedZoneID++;
                 _charRepo.UpdateProgress(hero);
-                resultMsg += "\n\nHaritada YENİ BÖLGE kilidi açıldı!";
+                resultMsg += "\n\nNEW ZONE unlocked on map!";
             }
-            resultMsg += $"\n{_selectedDifficulty} zorluğu tamamlandı!\nBoss'u yendiğin için bu aşamayı artık sınırsız normal düşmanlarla oynayabilirsin.";
+            resultMsg += $"\n{_selectedDifficulty} difficulty completed!\nYou can now play this stage with unlimited normal enemies since you defeated the Boss.";
         }
         else if (!_zoneManager.IsBossKilled(hero.CharacterID, _currentZone.ZoneID, _selectedDifficulty))
         {
@@ -435,7 +435,7 @@ public class UcExploration : UserControl
             mainForm.UpdateBars();
         }
 
-        ucArena.ShowBattleResults("Öldün... Şehre yaralı olarak dönüyorsun.", () =>
+        ucArena.ShowBattleResults("You died... Returning to town wounded.", () =>
         {
             ucArena.Visible = false;
             // Return to town/main menu

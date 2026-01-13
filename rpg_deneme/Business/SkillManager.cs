@@ -21,23 +21,23 @@ public class SkillManager
 
     public (bool Success, string Message) CanLearnSkill(CharacterModel character, SkillModel skill, List<SkillModel> allSkills)
     {
-        if (character.SkillPoints <= 0) return (false, "Yetersiz Yetenek Puanı!");
+        if (character.SkillPoints <= 0) return (false, "Insufficient Skill Points!");
 
-        if (skill.CurrentLevel >= skill.MaxLevel) return (false, "Yetenek zaten maksimum seviyede!");
+        if (skill.CurrentLevel >= skill.MaxLevel) return (false, "Skill is already at max level!");
 
-        if (character.Level < skill.RequiredLevel) return (false, $"Gereken Karakter Seviyesi: {skill.RequiredLevel}");
+        if (character.Level < skill.RequiredLevel) return (false, $"Required Character Level: {skill.RequiredLevel}");
 
         foreach (var reqId in skill.PrerequisiteSkillIDs)
         {
             var reqSkill = allSkills.FirstOrDefault(s => s.SkillID == reqId);
             if (reqSkill == null || reqSkill.CurrentLevel < 1)
             {
-                var reqName = reqSkill?.Name ?? "Bilinmeyen Yetenek";
-                return (false, $"Öncelikle '{reqName}' yeteneğini öğrenmelisin!");
+                var reqName = reqSkill?.Name ?? "Unknown Skill";
+                return (false, $"You must learn '{reqName}' first!");
             }
         }
 
-        return (true, "Öğrenilebilir");
+        return (true, "Learnable");
     }
 
     public void LearnSkill(CharacterModel character, SkillModel skill)

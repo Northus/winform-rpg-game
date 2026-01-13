@@ -183,7 +183,7 @@ public partial class UcArena
 
             if (skill.Type == Enums.SkillType.Passive)
             {
-                NotificationManager.AddNotification("Pasif yetenekler hotbara eklenemez.", Color.Yellow);
+                NotificationManager.AddNotification("Passive skills cannot be added to hotbar.", Color.Yellow);
                 return;
             }
 

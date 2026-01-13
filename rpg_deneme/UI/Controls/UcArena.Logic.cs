@@ -884,22 +884,22 @@ public partial class UcArena
                 if (target.BurnTimer <= 0)
                 {
                     target.BurnTimer = 180; // 3 seconds
-                    _effects.Add(new VisualEffect { X = target.X, Y = target.Y - 20, IsText = true, Text = "YANMA", Color = Color.OrangeRed, Size = 10, LifeTime = 40 });
+                    _effects.Add(new VisualEffect { X = target.X, Y = target.Y - 20, IsText = true, Text = "BURN", Color = Color.OrangeRed, Size = 10, LifeTime = 40 });
                 }
                 break;
             case Enums.SkillSecondaryEffect.Freeze:
                 target.FreezeTimer = 120; // 2 seconds
-                _effects.Add(new VisualEffect { X = target.X, Y = target.Y - 20, IsText = true, Text = "DONDU", Color = Color.Cyan, Size = 10, LifeTime = 40 });
+                _effects.Add(new VisualEffect { X = target.X, Y = target.Y - 20, IsText = true, Text = "FROZEN", Color = Color.Cyan, Size = 10, LifeTime = 40 });
                 break;
             case Enums.SkillSecondaryEffect.Stun:
                 target.StunTimer = 60; // 1 second
-                _effects.Add(new VisualEffect { X = target.X, Y = target.Y - 20, IsText = true, Text = "SERSEM", Color = Color.Yellow, Size = 10, LifeTime = 40 });
+                _effects.Add(new VisualEffect { X = target.X, Y = target.Y - 20, IsText = true, Text = "STUN", Color = Color.Yellow, Size = 10, LifeTime = 40 });
                 break;
             case Enums.SkillSecondaryEffect.Poison:
                 if (target.PoisonTimer <= 0)
                 {
                     target.PoisonTimer = 300; // 5 seconds
-                    _effects.Add(new VisualEffect { X = target.X, Y = target.Y - 20, IsText = true, Text = "ZEHİR", Color = Color.LimeGreen, Size = 10, LifeTime = 40 });
+                    _effects.Add(new VisualEffect { X = target.X, Y = target.Y - 20, IsText = true, Text = "POISON", Color = Color.LimeGreen, Size = 10, LifeTime = 40 });
                 }
                 break;
             case Enums.SkillSecondaryEffect.Slow:
@@ -1440,7 +1440,7 @@ public partial class UcArena
         this.OnBattleEnded?.Invoke(this, victory);
     }
 
-    public void ShowBattleResults(string message, Action onPrimary, string primaryText = "DEVAM ET", Action onSecondary = null, string secondaryText = "")
+    public void ShowBattleResults(string message, Action onPrimary, string primaryText = "CONTINUE", Action onSecondary = null, string secondaryText = "")
     {
         _showResults = true;
         _resultMessage = message;
@@ -1499,13 +1499,13 @@ public partial class UcArena
     {
         _npcs = new List<NpcEntity>
         {
-            new NpcEntity("MARKET", Enums.NpcType.Merchant,0,0),
-            new NpcEntity("IŞINLAYICI", Enums.NpcType.Teleporter,0,0),
-            new NpcEntity("DEPOCU", Enums.NpcType.StorageKeeper,0,0)
+            new NpcEntity("MERCHANT", Enums.NpcType.Merchant,0,0),
+            new NpcEntity("TELEPORTER", Enums.NpcType.Teleporter,0,0),
+            new NpcEntity("STORAGE KEEPER", Enums.NpcType.StorageKeeper,0,0)
             {
                 Color = Color.Brown
             },
-            new NpcEntity("DEMİRCİ", Enums.NpcType.BlackSmith,0,0)
+            new NpcEntity("BLACKSMITH", Enums.NpcType.BlackSmith,0,0)
             {
                 Color = Color.DarkSlateGray
             },

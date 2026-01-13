@@ -17,11 +17,11 @@ public class ConsumableManager
     {
         if (item.Count <= 0)
         {
-            return (Success: false, Message: "Eşya tükendi!");
+            return (Success: false, Message: "Item depleted!");
         }
         if (item.RemainingCooldownSeconds > 0)
         {
-            return (Success: false, Message: $"Henüz hazır değil! ({item.RemainingCooldownSeconds} sn)");
+            return (Success: false, Message: $"Not ready yet! ({item.RemainingCooldownSeconds} sec)");
         }
 
         if (skills == null)
@@ -40,9 +40,9 @@ public class ConsumableManager
             //_charRepo.UpdateProgress(hero); // Removed to prevent stutter during combat
             _repo.ConsumeItem(item.InstanceID, 1);
             if (item.Count > 0) item.Count--; // Update memory for UI
-            return (Success: true, Message: "Eşya kullanıldı.");
+            return (Success: true, Message: "Item used.");
         }
-        return (Success: false, Message: "Bu eşya şu an kullanılamaz.");
+        return (Success: false, Message: "Item cannot be used right now.");
     }
 
     private bool ApplyEffect(CharacterModel hero, ItemInstance item, List<SkillModel> skills)

@@ -97,7 +97,7 @@ public class FormCharSelect : Form
         lbl.Click += delegate
         {
             SessionManager.CurrentCharacter = model;
-            MessageBox.Show(model.Name + " seçildi! Oyuna giriliyor...");
+            MessageBox.Show(model.Name + " selected! Entering game...");
             GoToMainGame();
         };
         pnl.Controls.Add(lbl);
@@ -111,7 +111,7 @@ public class FormCharSelect : Form
         pnl.BackColor = Color.FromArgb(60, 60, 60);
         Button btn = new Button
         {
-            Text = "YENİ KARAKTER",
+            Text = "NEW CHARACTER",
             Dock = DockStyle.Fill,
             FlatStyle = FlatStyle.Flat,
             ForeColor = Color.LightGray
@@ -212,7 +212,7 @@ public class FormCharSelect : Form
         base.MaximizeBox = false;
         base.Name = "FormCharSelect";
         base.StartPosition = FormStartPosition.CenterScreen;
-        this.Text = "Karakter Seçimi";
+        this.Text = "Character Selection";
         base.Load += new EventHandler(FormCharSelect_Load);
         base.ResumeLayout(false);
     }

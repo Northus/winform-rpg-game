@@ -238,7 +238,7 @@ public class FrmItemTooltip : Form
         // Enchants
         if (item.Attributes != null && item.Attributes.Count > 0)
         {
-            string enchantText = "Efsunlar:\n";
+            string enchantText = "Enchants:\n";
             foreach (var attr in item.Attributes)
             {
                 // Format attribute display nicely
@@ -285,7 +285,7 @@ public class FrmItemTooltip : Form
                 int finalMax = (int)((float)item.MaxDamage * totalMult);
                 int bonusMin = finalMin - item.MinDamage;
                 int bonusMax = finalMax - item.MaxDamage;
-                text += $"Saldırı Gücü: {finalMin} - {finalMax}";
+                text += $"Attack Power: {finalMin} - {finalMax}";
                 if (bonusMin > 0 || bonusMax > 0) text += $" (+{bonusMin} - +{bonusMax})";
                 text += "\n";
             }
@@ -295,7 +295,7 @@ public class FrmItemTooltip : Form
                 int finalMagMax = (int)((float)item.MaxMagicDamage * totalMult);
                 int bonusMagMin = finalMagMin - item.MinMagicDamage;
                 int bonusMagMax = finalMagMax - item.MaxMagicDamage;
-                text += $"Büyü Gücü: {finalMagMin} - {finalMagMax}";
+                text += $"Magic Power: {finalMagMin} - {finalMagMax}";
                 if (bonusMagMin > 0 || bonusMagMax > 0) text += $" (+{bonusMagMin} - +{bonusMagMax})";
                 text += "\n";
             }
@@ -304,19 +304,19 @@ public class FrmItemTooltip : Form
         {
             int finalDef = (int)((float)item.BaseDefense * totalMult);
             int bonusDef = finalDef - item.BaseDefense;
-            text += $"Defans: {finalDef}";
+            text += $"Defense: {finalDef}";
             if (bonusDef > 0) text += $" (+{bonusDef})";
             text += "\n";
         }
         else if (item.ItemType == Enums.ItemType.Consumable)
         {
             if (item.EffectType != Enums.ItemEffectType.None)
-                text += $"Etkisi: {item.EffectType} ({item.EffectValue})\n";
+                text += $"Effect: {item.EffectType} ({item.EffectValue})\n";
             if (item.Cooldown > 0)
                 text += $"Cooldown: {item.Cooldown}s\n";
             if (item.IsStackable && item.Count > 1)
-                text += $"Adet: {item.Count}\n";
-            text += "Sağ Tık: Kullan\n";
+                text += $"Count: {item.Count}\n";
+            text += "Right Click: Use\n";
         }
 
         return text.Trim();

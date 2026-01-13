@@ -25,7 +25,7 @@ public class FormSkills : GameWindow
 
     public FormSkills()
     {
-        this.Title = "YETENEKLER";
+        this.Title = "SKILLS";
         this.Size = new Size(650, 520); // Increased height to fit content properly
         _skillManager = new SkillManager();
         _character = SessionManager.CurrentCharacter;
@@ -49,7 +49,7 @@ public class FormSkills : GameWindow
         // Learn Button
         _btnLearn = new Button
         {
-            Text = "ÖĞREN (+)",
+            Text = "LEARN (+)",
             Location = new Point(480, 45),
             Size = new Size(120, 30),
             BackColor = Color.ForestGreen,
@@ -63,7 +63,7 @@ public class FormSkills : GameWindow
         // Reset Button
         _btnReset = new Button
         {
-            Text = "SIFIRLA (5k)",
+            Text = "RESET (5k)",
             Location = new Point(370, 45),
             Size = new Size(100, 30),
             BackColor = Color.IndianRed,
@@ -99,7 +99,7 @@ public class FormSkills : GameWindow
         {
             ForeColor = Color.WhiteSmoke,
             Dock = DockStyle.Fill,
-            Text = "Bir yetenek seçin...",
+            Text = "Select a skill...",
             Font = new Font("Segoe UI", 9),
             TextAlign = ContentAlignment.MiddleCenter,
             Padding = new Padding(5)
@@ -120,7 +120,7 @@ public class FormSkills : GameWindow
 
     private void UpdateUI()
     {
-        _lblPoints.Text = $"Yetenek Puanı: {_character.SkillPoints}";
+        _lblPoints.Text = $"Skill Points: {_character.SkillPoints}";
 
         // Preserve Scroll Position
         Point scrollPos = _pnlTree.AutoScrollPosition;
@@ -257,11 +257,11 @@ public class FormSkills : GameWindow
             // Notify listeners (e.g. Main Form to update stats/hotbar)
             OnSkillChanged?.Invoke(this, EventArgs.Empty);
 
-            MessageBox.Show($"Yetenek öğrenildi! ({_selectedSkill.CurrentLevel}. Seviye)", "Başarılı", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show($"Skill learned! (Level {_selectedSkill.CurrentLevel})", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         else
         {
-            MessageBox.Show(result.Message, "Öğrenilemedi", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            MessageBox.Show(result.Message, "Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
     private void BtnReset_Click(object sender, EventArgs e)
@@ -269,7 +269,7 @@ public class FormSkills : GameWindow
         int resetCost = 5000;
         if (_character.Gold < resetCost)
         {
-            MessageBox.Show($"Yeterli altının yok! Gereken: {resetCost} Gold", "Hata", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            MessageBox.Show($"Not enough gold! Required: {resetCost} Gold", "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
@@ -278,11 +278,11 @@ public class FormSkills : GameWindow
 
         if (_character.SkillPoints == totalPoints)
         {
-            MessageBox.Show("Sıfırlanacak dağıtılmış puanınız yok!", "Hata", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            MessageBox.Show("No distributed points to reset!", "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
-        var result = MessageBox.Show($"Yetenekleri sıfırlamak istiyor musun?\nBedel: {resetCost} Gold\nBütün yetenek puanların iade edilecek.", "Sıfırla", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+        var result = MessageBox.Show($"Do you want to reset skills?\nCost: {resetCost} Gold\nAll skill points will be refunded.", "Reset", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
         if (result == DialogResult.Yes)
         {
             // Reset Logic
@@ -319,7 +319,7 @@ public class FormSkills : GameWindow
             UpdateUI();
             OnSkillChanged?.Invoke(this, EventArgs.Empty);
 
-            MessageBox.Show("Yetenekler sıfırlandı!", "Bilgi", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show("Skills reset!", "Info", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
     }
 }

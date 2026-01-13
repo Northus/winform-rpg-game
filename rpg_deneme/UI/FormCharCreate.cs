@@ -65,13 +65,13 @@ public class FormCharCreate : Form
         }
         if (_manager.CreateCharacter(newHero).Success)
         {
-            MessageBox.Show("Karakter oluşturuldu! Savaşa hazır!");
+            MessageBox.Show("Character created! Ready for battle!");
             base.DialogResult = DialogResult.OK;
             Close();
         }
         else
         {
-            MessageBox.Show("Karakter oluşturulamadı.");
+            MessageBox.Show("Character could not be created.");
         }
     }
 
@@ -103,7 +103,7 @@ public class FormCharCreate : Form
         this.buttonCreate.Name = "buttonCreate";
         this.buttonCreate.Size = new System.Drawing.Size(75, 23);
         this.buttonCreate.TabIndex = 2;
-        this.buttonCreate.Text = "button1";
+        this.buttonCreate.Text = "Create";
         this.buttonCreate.UseVisualStyleBackColor = true;
         this.buttonCreate.Click += new System.EventHandler(buttonCreate_Click);
         base.AutoScaleDimensions = new System.Drawing.SizeF(7f, 15f);
@@ -116,7 +116,7 @@ public class FormCharCreate : Form
         base.MaximizeBox = false;
         base.Name = "FormCharCreate";
         base.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
-        this.Text = "FormCharCreate";
+        this.Text = "Character Creation";
         base.Load += new System.EventHandler(FormCharCreate_Load);
         base.ResumeLayout(false);
         base.PerformLayout();

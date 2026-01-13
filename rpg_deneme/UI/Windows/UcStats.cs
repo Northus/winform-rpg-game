@@ -63,7 +63,7 @@ public class UcStats : GameWindow
     public UcStats()
     {
         InitializeComponent();
-        base.Title = "KARAKTER DETAYLARI";
+        base.Title = "CHARACTER DETAILS";
         base.Size = new Size(400, 350);
     }
 
@@ -82,7 +82,7 @@ public class UcStats : GameWindow
         lblDexVal.Text = _hero.DEX.ToString();
         lblIntVal.Text = _hero.INT.ToString();
         lblVitVal.Text = _hero.VIT.ToString();
-        lblPoints.Text = $"Kalan Puan: {_hero.StatPoints}";
+        lblPoints.Text = $"Points Left: {_hero.StatPoints}";
         lblPoints.ForeColor = ((_hero.StatPoints > 0) ? Color.Gold : Color.White);
         bool canSpend = _hero.StatPoints > 0;
         btnIncStr.Enabled = canSpend;
@@ -103,12 +103,12 @@ public class UcStats : GameWindow
         int hp = StatManager.CalculateTotalMaxHP(_hero, equipment, skills);
         int mp = StatManager.CalculateTotalMaxMana(_hero, equipment, skills);
         float speed = StatManager.CalculateAttackSpeed(_hero, weapon, equipment, skills);
-        lblAttack.Text = $"Fiziksel Hasar: {((phyDmg.Item1 == phyDmg.Item2) ? $"{phyDmg.Item1}" : $"{phyDmg.Item1}-{phyDmg.Item2}")}";
-        lblMagic.Text = $"Büyü Hasarı: {((magDmg.Item1 == magDmg.Item2) ? $"{magDmg.Item1}" : $"{magDmg.Item1}-{magDmg.Item2}")}";
-        lblDefense.Text = $"Toplam Defans: {def}";
-        lblHP.Text = $"Can Kapasitesi: {hp}";
-        lblMP.Text = $"Mana Kapasitesi: {mp}";
-        lblSpeed.Text = $"Saldırı Hızı: {speed:F2} / sn";
+        lblAttack.Text = $"Physical Dmg: {((phyDmg.Item1 == phyDmg.Item2) ? $"{phyDmg.Item1}" : $"{phyDmg.Item1}-{phyDmg.Item2}")}";
+        lblMagic.Text = $"Magic Dmg: {((magDmg.Item1 == magDmg.Item2) ? $"{magDmg.Item1}" : $"{magDmg.Item1}-{magDmg.Item2}")}";
+        lblDefense.Text = $"Total Defense: {def}";
+        lblHP.Text = $"Max HP: {hp}";
+        lblMP.Text = $"Max Mana: {mp}";
+        lblSpeed.Text = $"Attack Speed: {speed:F2} / sec";
 
         // Optional: Show Skill Points here too?
         // lblPoints.Text += $" | Yetenek Puanı: {_hero.SkillPoints}";

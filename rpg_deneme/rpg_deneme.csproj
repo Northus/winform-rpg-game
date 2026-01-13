@@ -10,9 +10,7 @@
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <CheckForOverflowUnderflow>False</CheckForOverflowUnderflow>
   </PropertyGroup>
-  <PropertyGroup>
-    <Version>0.1.0</Version>
-  </PropertyGroup>
+  <PropertyGroup />
   <ItemGroup />
 
   <ItemGroup>

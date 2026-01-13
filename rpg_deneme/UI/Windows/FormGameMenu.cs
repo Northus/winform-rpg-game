@@ -36,7 +36,7 @@ public class FormGameMenu : Form
         this.ControlBox = false;
 
         Label lblTitle = new Label();
-        lblTitle.Text = "OYUN MENÜSÜ";
+        lblTitle.Text = "GAME MENU";
         lblTitle.Font = new Font("Segoe UI", 14, FontStyle.Bold);
         lblTitle.ForeColor = Color.White;
         lblTitle.TextAlign = ContentAlignment.MiddleCenter;
@@ -48,17 +48,17 @@ public class FormGameMenu : Form
         int spacing = 10;
         int startY = 70;
 
-        Button btnResume = CreateButton("OYUNA DÖN", Color.FromArgb(60, 60, 60));
+        Button btnResume = CreateButton("RESUME GAME", Color.FromArgb(60, 60, 60));
         btnResume.Location = new Point(50, startY);
         btnResume.Click += (s, e) => { SelectedAction = MenuAction.Resume; this.Close(); };
         this.Controls.Add(btnResume);
 
-        Button btnCharSelect = CreateButton("KARAKTER SEÇİMİ", Color.FromArgb(60, 60, 60));
+        Button btnCharSelect = CreateButton("CHARACTER SELECT", Color.FromArgb(60, 60, 60));
         btnCharSelect.Location = new Point(50, startY + btnHeight + spacing);
         btnCharSelect.Click += (s, e) => { SelectedAction = MenuAction.CharSelect; this.Close(); };
         this.Controls.Add(btnCharSelect);
 
-        Button btnExit = CreateButton("OYUNDAN ÇIK", Color.Maroon);
+        Button btnExit = CreateButton("EXIT GAME", Color.Maroon);
         btnExit.Location = new Point(50, startY + (btnHeight + spacing) * 2);
         btnExit.Click += (s, e) => { SelectedAction = MenuAction.Exit; this.Close(); };
         this.Controls.Add(btnExit);

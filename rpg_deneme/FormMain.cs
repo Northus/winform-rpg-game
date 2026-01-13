@@ -163,7 +163,7 @@ public class FormMain : Form
             _townArena.OnStatsUpdated += OnTownStatsUpdated;
             _townArena.OnNpcInteraction += delegate (object? s, NpcEntity npc)
             {
-                if (npc.Name == "DEPOCU")
+                if (npc.Name == "STORAGE KEEPER")
                 {
                     ShowOnlyInventoryAnd(_ucStorage);
                     if (_ucStorage == null || _ucStorage.IsDisposed)
@@ -177,7 +177,7 @@ public class FormMain : Form
                                 _invManager.TransferItem(_hero, item, Enums.ItemLocation.Inventory, num);
                                 RefreshStats();
                             }
-                            else { MessageBox.Show("Çantan dolu!"); }
+                            else { MessageBox.Show("Inventory is full!"); }
                         };
                         pnlMainContent.Controls.Add(_ucStorage);
                     }
@@ -197,7 +197,7 @@ public class FormMain : Form
                 {
                     ShowZoneMap();
                 }
-                else if (npc.Name == "DEMİRCİ")
+                else if (npc.Name == "BLACKSMITH")
                 {
                     ShowOnlyInventoryAnd(_ucBlacksmith);
                     if (_ucBlacksmith == null || _ucBlacksmith.IsDisposed)
@@ -286,7 +286,7 @@ public class FormMain : Form
         int unitSellPrice = shopManager.GetSellPrice(item.TemplateID);
         if (unitSellPrice <= 0) { unitSellPrice = 1; }
         long totalEarn = (long)unitSellPrice * (long)qty;
-        DialogResult confirm = MessageBox.Show($"{qty} adet {item.Name} satılacak.\nKazanılacak: {totalEarn} Altın\nOnaylıyor musun?", "Satış", MessageBoxButtons.YesNo);
+        DialogResult confirm = MessageBox.Show($"Selling {qty} x {item.Name}.\nEarnings: {totalEarn} Gold\nConfirm?", "Sell", MessageBoxButtons.YesNo);
         if (confirm == DialogResult.Yes)
         {
             (bool, string) result = shopManager.SellItem(_hero, item, qty);
@@ -429,7 +429,7 @@ public class FormMain : Form
                     _hero.SkillPoints += diff;
                     CharacterRepository repo = new CharacterRepository();
                     repo.UpdateCharacterStats(_hero);
-                    NotificationManager.AddNotification($"{diff} Yetenek Puanı telafi edildi.", Color.Green);
+                    NotificationManager.AddNotification($"Compensated {diff} Skill Points.", Color.Green);
                 }
             }
 
@@ -563,11 +563,11 @@ public class FormMain : Form
                 RefreshStats();
 
                 _townArena.ShowBattleResults(
-                    $"TEBRİKLER! Dalga {_currentSurvivalWave} Tamamlandı!\nKazanılan: {reward} Gold.",
+                    $"CONGRATULATIONS! Wave {_currentSurvivalWave} Completed!\nEarned: {reward} Gold.",
                     () => { StartSurvivalMode(this, _currentSurvivalWave + 1); },
-                    "SONRAKİ DALGA",
+                    "NEXT WAVE",
                     () => { ShowTown(); },
-                    "ŞEHRE DÖN"
+                    "RETURN TO TOWN"
                 );
 
                 // Restore heavy stats update for town/results
@@ -590,11 +590,11 @@ public class FormMain : Form
             this.Invoke((MethodInvoker)delegate
             {
                 _townArena.ShowBattleResults(
-                   "Maalesef kaybettin...",
+                   "Unfortunately, you lost...",
                    () => { StartSurvivalMode(this, _currentSurvivalWave); },
-                   "TEKRAR DENE",
+                   "TRY AGAIN",
                    () => { ShowTown(); },
-                   "ŞEHRE DÖN"
+                   "RETURN TO TOWN"
                );
 
                 // Restore heavy stats update for town/results
@@ -672,7 +672,7 @@ public class FormMain : Form
     /// </summary>
     private void ReturnToCharSelect()
     {
-        if (MessageBox.Show("Karakter seçim ekranına dönmek istediğine emin misin?", "Onay", MessageBoxButtons.YesNo) == DialogResult.Yes)
+        if (MessageBox.Show("Are you sure you want to return to character selection?", "Confirm", MessageBoxButtons.YesNo) == DialogResult.Yes)
         {
             _isReturningToCharSelect = true;
 

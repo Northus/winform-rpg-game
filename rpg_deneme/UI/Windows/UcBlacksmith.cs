@@ -43,7 +43,7 @@ public class UcBlacksmith : GameWindow
 
     public UcBlacksmith()
     {
-        base.Title = "DEMİRCİ";
+        base.Title = "BLACKSMITH";
         base.Size = new Size(360, 320);
         SetupUI();
     }
@@ -124,9 +124,9 @@ public class UcBlacksmith : GameWindow
         AllowDrop = true;
         base.DragEnter += UcBlacksmith_DragEnter;
         base.DragDrop += UcBlacksmith_DragDrop;
-        slotMain = CreateSlot(0, startX, startY, "EKİPMAN");
-        slotMaterial = CreateSlot(1, startX + gap, startY, "MALZEME");
-        slotLucky = CreateSlot(2, startX + gap * 2, startY, "ŞANS");
+        slotMain = CreateSlot(0, startX, startY, "EQUIPMENT");
+        slotMaterial = CreateSlot(1, startX + gap, startY, "MATERIAL");
+        slotLucky = CreateSlot(2, startX + gap * 2, startY, "LUCK");
         Label lblArrow = new Label
         {
             Text = "▼",
@@ -136,11 +136,11 @@ public class UcBlacksmith : GameWindow
             Location = new Point(startX + gap - 10, startY + 60)
         };
         base.Controls.Add(lblArrow);
-        slotResult = CreateSlot(3, startX + gap - 10, startY + 100, "SONUÇ");
+        slotResult = CreateSlot(3, startX + gap - 10, startY + 100, "RESULT");
         slotResult.BackColor = Color.FromArgb(60, 70, 60);
         lblInfo = new Label
         {
-            Text = "Gerekli: -",
+            Text = "Required: -",
             ForeColor = Color.Silver,
             Location = new Point(20, 230),
             AutoSize = true
@@ -148,7 +148,7 @@ public class UcBlacksmith : GameWindow
         base.Controls.Add(lblInfo);
         lblChance = new Label
         {
-            Text = "Şans: -",
+            Text = "Chance: -",
             ForeColor = Color.Gold,
             Location = new Point(200, 230),
             AutoSize = true,
@@ -157,7 +157,7 @@ public class UcBlacksmith : GameWindow
         base.Controls.Add(lblChance);
         btnUpgrade = new Button
         {
-            Text = "YÜKSELT",
+            Text = "UPGRADE",
             Size = new Size(100, 35),
             Location = new Point(120, 260),
             BackColor = Color.DarkRed,
@@ -219,7 +219,7 @@ public class UcBlacksmith : GameWindow
         {
             if (!ValidateForTarget(droppedItem, targetSlot, out var tmpMsg))
             {
-                ShowStatus(tmpMsg ?? "Uygun olmayan eşya.", Color.OrangeRed);
+                ShowStatus(tmpMsg ?? "Invalid item.", Color.OrangeRed);
                 return;
             }
             ItemInstance stored = targetSlot.Item;
@@ -243,12 +243,12 @@ public class UcBlacksmith : GameWindow
             }
             if (!movedBack)
             {
-                ShowStatus("Envanterde yer yok - takas yapılamadı.", Color.OrangeRed);
+                ShowStatus("Inventory full - swap failed.", Color.OrangeRed);
                 return;
             }
             if (!_repo.MoveItemLocation(droppedItem.InstanceID, Enums.ItemLocation.Storage, targetSlot.SlotIndex))
             {
-                ShowStatus("Eşya depoya taşınamadı.", Color.OrangeRed);
+                ShowStatus("Item could not be moved to storage.", Color.OrangeRed);
                 return;
             }
             ItemInstance storedDef = _repo.GetItemAt(heroId, Enums.ItemLocation.Storage, targetSlot.SlotIndex);
@@ -295,7 +295,7 @@ public class UcBlacksmith : GameWindow
                     }
                     else
                     {
-                        ShowStatus("Malzeme slotu dolu.", Color.Orange);
+                        ShowStatus("Material slot is full.", Color.Orange);
                     }
                     return;
                 }
@@ -319,7 +319,7 @@ public class UcBlacksmith : GameWindow
                     };
                     if (!_repo.AddItemDirectly(newItem))
                     {
-                        ShowStatus("Malzeme depoya eklenemedi.", Color.OrangeRed);
+                        ShowStatus("Material could not be added to storage.", Color.OrangeRed);
                         return;
                     }
                     _repo.ConsumeItem(droppedItem.InstanceID, toStore);
@@ -335,7 +335,7 @@ public class UcBlacksmith : GameWindow
             }
             if (!_repo.MoveItemLocation(droppedItem.InstanceID, Enums.ItemLocation.Storage, targetSlot.SlotIndex))
             {
-                ShowStatus("Eşya depoya taşınamadı.", Color.OrangeRed);
+                ShowStatus("Item could not be moved to storage.", Color.OrangeRed);
                 return;
             }
             ItemInstance storedDef2 = _repo.GetItemAt(hero.CharacterID, Enums.ItemLocation.Storage, targetSlot.SlotIndex);
@@ -362,7 +362,7 @@ public class UcBlacksmith : GameWindow
                 }
                 if (!_repo.MoveItemLocation(droppedItem.InstanceID, Enums.ItemLocation.Storage, targetSlot.SlotIndex))
                 {
-                    ShowStatus("Depodaki eşya taşınamadı.", Color.OrangeRed);
+                    ShowStatus("Stored item could not be moved.", Color.OrangeRed);
                     return;
                 }
                 ItemInstance storedExt = _repo.GetItemAt(hero.CharacterID, Enums.ItemLocation.Storage, targetSlot.SlotIndex);
@@ -399,7 +399,7 @@ public class UcBlacksmith : GameWindow
                     }
                     else
                     {
-                        ShowStatus("Malzeme slotu dolu.", Color.Orange);
+                        ShowStatus("Material slot is full.", Color.Orange);
                     }
                 }
                 else if (sourceSlot != null && targetSlot.Item != null)
@@ -410,7 +410,7 @@ public class UcBlacksmith : GameWindow
                     bool movedSource = _repo.MoveItemLocation(sourceSlot.Item.InstanceID, Enums.ItemLocation.Storage, tgtIndex);
                     if (!movedTarget || !movedSource)
                     {
-                        ShowStatus("Eşya takası başarısız.", Color.OrangeRed);
+                        ShowStatus("Item swap failed.", Color.OrangeRed);
                         return;
                     }
                     ReloadSlotItem(sourceSlot);
@@ -423,7 +423,7 @@ public class UcBlacksmith : GameWindow
                 }
                 else if (!_repo.MoveItemLocation(droppedItem.InstanceID, Enums.ItemLocation.Storage, targetSlot.SlotIndex))
                 {
-                    ShowStatus("Depo içinde taşınamadı.", Color.OrangeRed);
+                    ShowStatus("Could not move within storage.", Color.OrangeRed);
                 }
                 else
                 {
@@ -445,7 +445,7 @@ public class UcBlacksmith : GameWindow
             {
                 if (!_upgManager.IsUpgradeable(item))
                 {
-                    message = "Sadece ekipman (silah/zırh) koyabilirsiniz.";
+                    message = "Only equipment (weapon/armor) allowed.";
                     return false;
                 }
             }
@@ -453,7 +453,7 @@ public class UcBlacksmith : GameWindow
             {
                 if (item.TemplateID != 7)
                 {
-                    message = "Bu slot yalnızca yükseltme malzemesi kabul eder.";
+                    message = "This slot only accepts upgrade materials.";
                     return false;
                 }
             }
@@ -463,13 +463,13 @@ public class UcBlacksmith : GameWindow
                 bool hasEffectValue = item.EffectValue > 0;
                 if (!isLuckyByList && !hasEffectValue)
                 {
-                    message = "Bu slot yalnızca şans eşyası kabul eder.";
+                    message = "This slot only accepts luck items.";
                     return false;
                 }
             }
             else if (target == slotResult)
             {
-                message = "Sonuç slotuna doğrudan koyamazsınız.";
+                message = "You cannot place items directly in the result slot.";
                 return false;
             }
             return true;
@@ -480,7 +480,7 @@ public class UcBlacksmith : GameWindow
     {
         if (slotMain.Item == null)
         {
-            lblInfo.Text = "Lütfen bir ekipman koyun.";
+            lblInfo.Text = "Please place an equipment.";
             lblInfo.ForeColor = Color.Silver;
             lblChance.Text = "";
             return;
@@ -497,11 +497,11 @@ public class UcBlacksmith : GameWindow
         if (rawTotal > 100)
         {
             lblChance.ForeColor = Color.OrangeRed;
-            ShowStatus("Dikkat: Başarı şansı %100'ü aşıyor!", Color.Orange);
+            ShowStatus("Warning: Success chance exceeds 100%!", Color.Orange);
         }
-        lblInfo.Text = $"Gerekli Malzeme: {reqCount} adet";
+        lblInfo.Text = $"Required Material: {reqCount} pcs";
         lblInfo.ForeColor = Color.Silver;
-        lblChance.Text = $"Başarı Şansı: %{totalChance}";
+        lblChance.Text = $"Success Chance: %{totalChance}";
         if (totalChance < 50)
         {
             lblChance.ForeColor = Color.Red;
@@ -570,7 +570,7 @@ public class UcBlacksmith : GameWindow
                             moved = _invManager.TransferItem(hero, s.Item, Enums.ItemLocation.Inventory, existing.SlotIndex);
                             if (moved)
                             {
-                                ShowStatus("Eşya envantere taşındı ve birleştirildi.", Color.LimeGreen);
+                                ShowStatus("Item moved to inventory and stacked.", Color.LimeGreen);
                             }
                         }
                     }
@@ -583,16 +583,16 @@ public class UcBlacksmith : GameWindow
                     {
                         if (_invManager.TransferItem(hero, s.Item, Enums.ItemLocation.Inventory, empty))
                         {
-                            ShowStatus("Eşya envantere taşındı.", Color.LimeGreen);
+                            ShowStatus("Item moved to inventory.", Color.LimeGreen);
                         }
                         else
                         {
-                            ShowStatus("Eşya envantere taşınamadı.", Color.OrangeRed);
+                            ShowStatus("Item could not be moved to inventory.", Color.OrangeRed);
                         }
                     }
                     else
                     {
-                        ShowStatus("Envanterde yer yok!", Color.OrangeRed);
+                        ShowStatus("Inventory is full!", Color.OrangeRed);
                     }
                     continue;
                 }
@@ -606,7 +606,7 @@ public class UcBlacksmith : GameWindow
             }
         }
         NotifyMainForm();
-        ShowStatus("Demircide kalan eşyalar envantere taşındı.", Color.LimeGreen);
+        ShowStatus("Items remaining in Blacksmith moved to inventory.", Color.LimeGreen);
     }
 
     private void BtnUpgrade_Click(object sender, EventArgs e)
@@ -617,7 +617,7 @@ public class UcBlacksmith : GameWindow
         }
         if (slotResult.Item != null)
         {
-            ShowStatus("Önce sonuç slotundaki eşyayı almalısın!", Color.OrangeRed);
+            ShowStatus("You must take the item from the result slot first!", Color.OrangeRed);
             return;
         }
         string statusMsg = "";
@@ -626,11 +626,11 @@ public class UcBlacksmith : GameWindow
         switch (_upgManager.PerformUpgrade(slotMain.Item, slotMaterial.Item, slotLucky.Item))
         {
             case -1:
-                ShowStatus("Yeterli yükseltme malzemen yok!", Color.OrangeRed);
+                ShowStatus("Not enough upgrade materials!", Color.OrangeRed);
                 return;
             case 1:
                 {
-                    statusMsg = "BAŞARILI! Eşya seviye atladı.";
+                    statusMsg = "SUCCESS! Item leveled up.";
                     statusColor = Color.LimeGreen;
                     success = true;
                     ItemInstance upgradedItem = slotMain.Item;
@@ -640,7 +640,7 @@ public class UcBlacksmith : GameWindow
                     break;
                 }
             default:
-                statusMsg = "BAŞARISIZ... Eşya yok oldu.";
+                statusMsg = "FAILED... Item destroyed.";
                 statusColor = Color.OrangeRed;
                 slotMain.SetItem(null);
                 break;
@@ -681,7 +681,7 @@ public class UcBlacksmith : GameWindow
                     slot.SetItem(null);
                     NotifyMainForm();
                     UpdateInfo();
-                    ShowStatus("Eşya envantere taşındı.", Color.LimeGreen);
+                    ShowStatus("Item moved to inventory.", Color.LimeGreen);
                     return;
                 }
                 slot.SetItem(refreshedItem);
@@ -692,17 +692,17 @@ public class UcBlacksmith : GameWindow
             int emptySlot = _repo.FindFirstEmptyInventorySlot(hero.CharacterID);
             if (emptySlot == -1)
             {
-                ShowStatus("Envanterde yer yok!", Color.OrangeRed);
+                ShowStatus("Inventory is full!", Color.OrangeRed);
                 return;
             }
             if (_invManager.TransferItem(hero, slot.Item, Enums.ItemLocation.Inventory, emptySlot))
             {
                 slot.SetItem(null);
-                ShowStatus("Eşya envantere taşındı.", Color.LimeGreen);
+                ShowStatus("Item moved to inventory.", Color.LimeGreen);
             }
             else
             {
-                ShowStatus("Taşıma hatası.", Color.OrangeRed);
+                ShowStatus("Move error.", Color.OrangeRed);
             }
         }
         NotifyMainForm();
